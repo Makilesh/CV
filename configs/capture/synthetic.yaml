@@ -1,0 +1,9 @@
+# Deterministic generated frames — no camera, no clip, no GPU.
+# Used by the tests and by CI (CPU-only; gates correctness, not performance).
+# realtime: true paces frames to target_fps, so timing behaviour matches a real stream.
+source: synthetic
+width: 640
+height: 480
+target_fps: 30.0
+seed: 1337
+realtime: true

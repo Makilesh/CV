@@ -1,0 +1,13 @@
+# Telemetry. Load-bearing — see CLAUDE.md.
+#
+# power_sample_hz: NVML polling rate. 10 Hz integrates cleanly over a 60 s run without measurably
+# perturbing the workload. Raise it for short runs where energy resolution matters.
+power_sample_hz: 10.0
+
+# keep_events: write the raw event log into the metrics JSON alongside the aggregates.
+# Aggregates can then be recomputed if a definition changes, instead of re-running the benchmark.
+keep_events: true
+
+# Guard against unbounded memory on a long run. Exceeding it sets events.counts.truncated = true
+# rather than silently discarding.
+max_events: 500000

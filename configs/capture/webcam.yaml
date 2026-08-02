@@ -1,0 +1,30 @@
+# Live webcam — benchmark profile (deterministic timing).
+#
+# MEASURED 2026-08-01, and this matters more than it looks:
+#
+#   * The camera is capped at 30 FPS at every mode up to 1080p MJPG. 1080p is essentially free
+#     (29.6 FPS), so resolution is a quality knob with no throughput penalty.
+#   * CAP_DSHOW and CAP_MSMF deliver identical throughput (29.95 vs 29.85 FPS), but DSHOW has the
+#     tighter tail: p99 inter-frame 51.1 ms vs 65.1 ms. Jitter hurts a capture thread more than
+#     mean latency, so DSHOW is the default. DSHOW reports CAP_PROP_FPS as -1, hence target_fps.
+#   * LEFT ON AUTO-EXPOSURE, THIS CAMERA TRADES FRAME RATE FOR EXPOSURE TIME AS THE ROOM DARKENS:
+#     30 FPS in good light, 19.9 FPS dimmer, 10 FPS dimmer still — silently, no error. Every
+#     FPS-threshold exit criterion in this project would otherwise depend on the time of day.
+#
+# So exposure is pinned. -5 is log2(seconds) = 1/32 s = 31 ms, the longest exposure that fits a
+# 33 ms frame budget; measured 30.1 FPS across repeated trials, variance under 0.1 FPS.
+#
+# THE COST: pinned exposure needs a well-lit room. In a dim room the frames go near-black
+# (measured 1.6/255) while every timing number still looks perfect. WebcamSource measures warmup
+# brightness and sets `too_dark` in the metrics file so such a run cannot pass as a result.
+# For the live demo, where image quality beats deterministic timing, use capture=webcam_demo.
+source: webcam
+device_index: 0
+backend: CAP_DSHOW
+width: 640
+height: 480
+fourcc: MJPG
+target_fps: 30.0
+warmup_frames: 5
+auto_exposure: 0.25   # 0.25 = manual mode under DirectShow, 0.75 = auto
+exposure: -5.0        # log2 seconds; -5 = 31 ms. Longer than -5 cannot sustain 30 FPS.

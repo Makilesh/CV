@@ -1,0 +1,9 @@
+# Recorded clip, paced to wall clock.
+#
+# realtime: true is NOT optional for any measured run. Invariant 1: batch-processing a video file
+# is not streaming evaluation and silently inflates every number. Set it false only for offline
+# oracle generation, and record that you did.
+source: file
+path: null   # required — set with -o capture.path=data/clips/foo.mp4
+realtime: true
+loop: false

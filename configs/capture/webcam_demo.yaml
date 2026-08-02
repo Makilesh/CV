@@ -1,0 +1,13 @@
+# Live webcam — demo profile (image quality over deterministic timing).
+#
+# Auto-exposure gives a usable image in any lighting, at the cost of a frame rate that drifts with
+# ambient light (measured 10–30 FPS across a single evening). That is fine for the Phase 7 GUI demo
+# and NOT fine for any measured run.
+#
+# Do not use this profile for benchmarks. Runs made with it are not comparable to runs made with
+# capture=webcam, and the achieved FPS will silently depend on the room.
+defaults:
+  - webcam
+
+auto_exposure: 0.75
+exposure: null

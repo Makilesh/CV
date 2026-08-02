@@ -1,0 +1,9 @@
+# No scheduler. Phase 0 and Phase 1 have nothing to schedule.
+#
+# Phase 4 adds siblings here, one per trigger policy, all behind a single interface:
+#   fixed_interval.yaml   (every frame, 1 Hz, 0.5 Hz, 0.2 Hz)
+#   motion_threshold.yaml
+#   embedding_novelty.yaml
+#   information_gain.yaml
+#   learned.yaml
+policy: none

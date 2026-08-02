@@ -1,0 +1,25 @@
+# Peripheral — root config. Every tunable lives in this tree; nothing is hardcoded in source.
+defaults:
+  - capture: webcam
+  - telemetry: default
+  - scheduler: none
+  - _self_
+
+seed: 1337
+
+run:
+  # These three are overridden by the mandated CLI flags (--duration/--headless/--metrics-out).
+  # They are here so a run is fully reproducible from a config file alone.
+  duration_s: 5.0
+  headless: true
+  metrics_out: results/metrics.json
+
+paths:
+  results_dir: results
+  data_dir: data      # clips — gitignored
+  models_dir: models  # weights — gitignored
+
+hydra:
+  output_subdir: null   # no per-run .hydra dirs; metrics JSON is our run record
+  run:
+    dir: .
