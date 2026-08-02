@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=78"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "peripheral"
+version = "0.1.0"
+description = "Interactive-speed VLM understanding of a live video stream on a single consumer laptop GPU"
+requires-python = ">=3.11,<3.13"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# src-layout without requiring `pip install -e .` — keeps a fresh clone one command from green.
+pythonpath = ["src"]
+addopts = "-ra --strict-markers"
+markers = [
+    "slow: takes more than ~2 seconds of wall clock",
+    "webcam: needs a physical camera; skipped when none is present",
+    "gpu: needs CUDA; skipped on the CPU-only CI runner",
+]
