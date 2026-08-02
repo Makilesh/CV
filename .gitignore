@@ -1,0 +1,36 @@
+# Environments
+.venv
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Weights and clips — never commit these
+models/
+data/
+*.gguf
+*.onnx
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.mp4
+*.mkv
+*.avi
+*.mov
+
+# Run outputs — figures and metrics are regenerated, not versioned
+results/*
+!results/.gitkeep
+outputs/
+multirun/
+
+# Vendored third-party binaries (llama.cpp release assets)
+vendor/
+
+# OS / editor
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
