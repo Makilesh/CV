@@ -5,6 +5,8 @@ defaults:
   - scheduler: none
   - pipeline: default
   - vlm: smolvlm2_500m
+  - fasttier: default
+  - encoder_bench: default
   - _self_
 
 seed: 1337
