@@ -3,6 +3,8 @@ defaults:
   - capture: webcam
   - telemetry: default
   - scheduler: none
+  - pipeline: default
+  - vlm: smolvlm2_500m
   - _self_
 
 seed: 1337
@@ -13,6 +15,10 @@ run:
   duration_s: 5.0
   headless: true
   metrics_out: results/metrics.json
+
+record:
+  path: data/clips/clip.mp4
+  fourcc: mp4v   # widely readable without extra codecs on Windows
 
 paths:
   results_dir: results

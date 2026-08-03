@@ -1,0 +1,28 @@
+# Threaded pipeline: capture -> fast_tier -> vlm -> render, joined by bounded queues.
+#
+# BACKPRESSURE POLICY. Invariant 7: the capture thread never blocks on inference. Video is a
+# real-time source, so when the VLM cannot keep up something must be discarded; the only questions
+# are what, and whether it is recorded. Every drop lands in the metrics file with its stage and
+# reason.
+#
+#   drop_oldest  (default) evict the stalest queued frame. Correct for video understanding: an
+#                answer about a 2-second-old frame is worth less than one about the current frame.
+#   drop_newest  discard the arriving frame, keep the backlog. Preserves temporal order at the
+#                cost of answering about the past.
+#   block        the producer waits. VIOLATES INVARIANT 7. Provided only so Phase 1 can measure
+#                what it costs rather than assert that it is bad.
+policy: drop_oldest
+
+# Queue sizes are small on purpose. A deep queue does not buy throughput when the consumer is 10x
+# slower than the producer; it only converts dropped frames into stale answers, which is worse —
+# the staleness is then hidden inside "latency" instead of being visible as a drop.
+capture_q_size: 4
+vlm_q_size: 2
+answer_q_size: 8
+
+# Unbiased queue-depth sampling. Recording depth only on put() would sample exactly when the
+# queue is longest and produce a flattering time series.
+queue_sample_hz: 20.0
+
+prompt: "Describe what you see in one short sentence."
+max_tokens: 32
