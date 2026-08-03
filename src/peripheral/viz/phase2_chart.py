@@ -103,8 +103,8 @@ def _panel_tradeoff(ax, rows) -> None:
         )
 
     ax.axhline(1.0, color=C["warn"], ls="--", lw=1.5)
-    ax.text(0.15, 1.06, "below this line: reacts MORE to movement than to a real event",
-            fontsize=8, color=C["warn"], fontweight="bold")
+    ax.text(3.0, 0.80, "below this line: reacts MORE to movement than to a real event",
+            fontsize=8, color=C["warn"], fontweight="bold", va="top")
     ax.axvline(10.0, color=C["budget"], ls="--", lw=1.5)
     ax.text(10.4, 4.4, "10 ms budget", fontsize=8, color=C["budget"], fontweight="bold",
             rotation=90, va="top")
@@ -115,6 +115,8 @@ def _panel_tradeoff(ax, rows) -> None:
         fontsize=11, fontweight="bold",
     )
     ax.set_xlim(-0.4, 12)
+    top = max(r["semantic_vs_motion"] for r in rows)
+    ax.set_ylim(0.0, top * 1.30)  # room for the highest label to clear the title
     ax.grid(alpha=0.3, color=C["grid"])
 
 
