@@ -17,6 +17,22 @@ omegaconf==2.3.1
 
 # --- GPU / models -----------------------------------------------------------
 torch==2.11.0+cu128              # reference path and vision encoders only; never a latency claim
+torchvision==0.26.0+cu128        # install with --no-deps so it cannot drag torch sideways
+timm==1.0.28                     # fast-tier encoder zoo (MobileNetV3, DINOv2, CLIP)
+huggingface_hub==1.26.0
+safetensors==0.8.0
+
+# --- fast tier --------------------------------------------------------------
+onnx==1.22.0
+# PINNED TO 1.26 ON PURPOSE. onnxruntime-gpu 1.28 is built against CUDA 13, whose Windows runtime
+# has no pip route (NVIDIA's nvidia-*-cu13 wheels are Linux-only). 1.28 does not error — it falls
+# back to CPU SILENTLY, so CPU latencies get reported as GPU ones. 1.26 targets CUDA 12 and reuses
+# the CUDA 12.8 + cuDNN 9 DLLs torch already ships. peripheral.fasttier.encoders adds torch/lib to
+# the DLL search path, and OnnxEncoder raises if a requested GPU provider does not bind.
+onnxruntime-gpu==1.26.0
+
+# --- figures ----------------------------------------------------------------
+matplotlib==3.11.1
 
 # --- test -------------------------------------------------------------------
 pytest==9.1.1

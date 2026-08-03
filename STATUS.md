@@ -215,6 +215,11 @@ Rejected approaches belong here with their reasons.
 | D10 | Queue sizes stay small (capture 4, VLM 2, answer 8) | A deep queue buys no throughput when the consumer is 3× slower; it only converts *dropped frames* into *stale answers*, moving the damage from a visible metric into an invisible one | Deep queues — smoother-looking drop rate, worse and less honest staleness |
 | D11 | **Rejected HTTP connection pooling.** Client keeps plain `urllib`, one connection per call | Measured: pooling fixes a bare `GET /health` (15.08 → 0.46 ms p50) but does **nothing** for completions (15.14 ms fresh vs 15.58 ms pooled). The ~15 ms floor is llama-server's task scheduling, not transport, so pooling adds a moving part for no measured gain | `requests.Session` — better practice in the abstract, zero measured benefit here |
 | D12 | Phase 1 baseline uses the **smallest credible** VLM (SmolVLM2-500M), not a representative one | Phase 1 must show per-frame inference cannot keep up. A large model makes that trivially true and easy to dismiss with "use a smaller model". If even the smallest cannot, nothing can. | A 2B–4B model — more representative of final quality, weaker as an argument. Phase 3 does the real sweep |
+| D13 | Fast-tier encoder is **MobileNetV3-small via ONNX Runtime CUDA** | Cheapest candidate *and* best on the metric that matters (`semantic/motion` 4.61). 3.32 ms vs DINOv2's 4.20 ms and CLIP's 4.23 ms. The simple thing won outright. | DINOv2-ViT-S/14 — better `semantic/lighting` (15.84 vs 12.48) but 1.5× worse at separating events from movement, and 27% slower |
+| D14 | Encoder quality is scored as **lighting vs motion vs semantic embedding displacement**, not ImageNet accuracy or retrieval mAP | A generic benchmark says nothing about our failure mode. Phase 4's headline risk is a false trigger on lighting drift, so the encoder is scored on exactly that discrimination. | Standard embedding benchmarks — comparable to published numbers, irrelevant to the decision being made |
+| D15 | **`d_semantic/d_lighting` is never reported alone.** Both ratios always appear together | The mean-centred, L2-normalised control is brightness-invariant *by construction*, so it scores best (19.45) while being a pure motion detector — its `semantic/motion` of 0.42 gives it away. A single-ratio table would have chosen the control. | Reporting the headline ratio only — cleaner table, actively misleading |
+| D16 | ONNX Runtime pinned to **1.26.0 (CUDA 12)**, reusing torch's bundled CUDA 12.8 + cuDNN 9 DLLs | `onnxruntime-gpu` 1.28 is built against CUDA 13, whose Windows runtime has no pip route (NVIDIA's `nvidia-*-cu13` wheels are Linux-only). 1.28 fell back to CPU **silently** — sessions succeed and CPU latencies get reported as GPU ones. | Staying on 1.28 with CPU fallback — current version, invalid numbers |
+| D17 | `OnnxEncoder` **raises** when a requested GPU provider does not bind | See D16: the failure mode is a plausible-looking wrong number, which is the most dangerous kind. `allow_cpu_fallback=True` is required to measure CPU deliberately. | Warning and continuing — one more silently-wrong benchmark |
 
 ---
 
@@ -312,12 +317,74 @@ independent metric once the cache (Phase 5) starts serving answers from older ev
 
 ---
 
-## 10. Next action
+## 10. Phase 2 results — the fast tier fits, with 7× room
 
-**Phase 1 is complete and awaiting confirmation.** Do not start Phase 2 until it is given.
+`pytest tests/ -q` → **94 passed**, 83 s. Chart: `results/phase2_fast_tier.png`.
 
-Phase 2 is the fast tier: frame differencing, a small embedding encoder (benchmark 2–3 of
-DINOv2-small / small CLIP / MobileNet), scene-change scoring and novelty against a rolling
-reference — sustaining 30 FPS with the VLM disabled, ONNX Runtime measured against raw PyTorch.
-Per finding 2 above it has a ~10 ms budget per frame, and per Q1 in §7 the exit criterion should be
-read as ≥29.5 FPS live plus ≥30 FPS on a file source.
+### Encoder sweep (`results/phase2_encoder_bench.json`)
+
+7 candidates × latency-including-preprocessing × discrimination quality:
+
+| encoder | p50 ms | p95 ms | dim | sem/light | **sem/motion** |
+|---|---|---|---|---|---|
+| downsample32 *(control, no network)* | **0.16** | 0.17 | 1024 | **19.45** | **0.42** ⚠️ |
+| mobilenetv3_small torch fp16 | 5.62 | 6.17 | 1024 | 12.45 | 4.59 |
+| **mobilenetv3_small onnx** ← chosen | **3.32** | 4.08 | 1024 | 12.48 | **4.61** |
+| dinov2_vits14 torch fp16 | 5.21 | 5.56 | 384 | 15.81 | 2.99 |
+| dinov2_vits14 onnx | 4.20 | 4.52 | 384 | 15.84 | 2.99 |
+| clip_vitb32 torch fp16 | 4.72 | 5.88 | 768 | 4.46 | 2.77 |
+| clip_vitb32 onnx | 4.23 | 5.44 | 768 | 4.47 | 2.77 |
+
+**Read both ratios or you pick the wrong encoder.** The control tops `semantic/lighting` at 19.45 —
+purely because mean-centring and L2-normalising a grayscale thumbnail makes it brightness-invariant
+by construction. Its `semantic/motion` of **0.42** exposes what it actually is: it moves *more* when
+something merely moves than when the scene genuinely changes. That is the motion detector Phase 4
+has to beat, and a single-ratio table would have selected it.
+
+**ONNX Runtime beat PyTorch on every candidate** — 1.69× on MobileNet, 1.24× DINOv2, 1.12× CLIP —
+with quality identical to 3 decimal places, as it should be for the same graph. `PROMPT.md`'s
+preference for ORT is now measured rather than assumed.
+
+**The cheapest learned encoder won outright.** MobileNetV3-small is both the fastest network and the
+best at separating events from movement. No quality-for-speed trade had to be made.
+
+### Sustained run (`results/phase2_fasttier_webcam.json`, 30 s live)
+
+| | |
+|---|---|
+| **achieved FPS** | **30.65**, 0 frames dropped |
+| fast_tier p50 / p95 / p99 | **4.55 / 6.99 / 8.63 ms** (budget ~10 ms) |
+| **unpaced throughput** | **211 FPS — 7.0× the 30 FPS requirement** |
+| mean GPU power | **8.17 W** vs Phase 1's 65.6 W — **8× cheaper** |
+| peak VRAM | 0.61 GB |
+| novelty p50 / p95 / max | 0.019 / 0.100 / 0.187 |
+| motion p50 / p95 / max | 0.0012 / 0.0031 / 0.0087 |
+
+Both readings of the exit criterion hold: **30.65 FPS live** (≥29.5, the camera's ceiling) and
+**211 FPS unpaced** (≥30). Per-stage timings are in the metrics JSON as required.
+
+The 8× power gap is the quantitative case for the whole architecture: the fast tier can watch every
+frame for 8.2 W, while answering every frame costs 65.6 W and still cannot keep up.
+
+### What this does not yet show
+
+The quality numbers come from **24 frames of one desk clip** with a **synthetic** semantic event
+(an opaque textured block over ~12% of the frame). It is a deliberately easy event — an encoder
+that fails it certainly fails a subtle one, but passing it does not prove the reverse. Phase 4 needs
+real annotated clips with genuine semantic events, and the lighting-drift clips must be recorded
+with exposure pinned (§3) or the confound lands inside the very clips meant to expose false triggers.
+
+No threshold has been chosen yet. Phase 2 produces the *signals*; deciding when they mean "invoke
+the VLM" is Phase 4, and that is where these numbers get their real test.
+
+---
+
+## 11. Next action
+
+**Phase 2 is complete and awaiting confirmation.** Do not start Phase 3 until it is given.
+
+Phase 3 is the slow tier: 3–4 small VLMs benchmarked across GGUF quantization levels (peak VRAM,
+TTFT, tokens/sec, load time, answer quality on 20 frames), one transformers + bitsandbytes run as a
+**quality reference only**, then KV-cache reuse and streaming decode with before/after TTFT numbers.
+Target **p95 TTFT under 400 ms** including vision encoding — and note it must be met *including* the
+~15 ms llama-server scheduling floor measured in Phase 1 (D11).
