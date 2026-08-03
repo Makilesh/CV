@@ -120,6 +120,10 @@ class BoundedRunner(ABC):
         status = schema.STATUS_COMPLETED
         failure: str | None = None
         exit_code = EXIT_OK
+        # The measured window closes when the work stops, not when cleanup finishes. Teardown
+        # (releasing a DSHOW camera, unloading a model) would otherwise be counted as time in
+        # which we captured no frames, deflating every rate metric.
+        loop_end: float | None = None
 
         try:
             self.setup()
@@ -134,13 +138,16 @@ class BoundedRunner(ABC):
                 if not self.step():
                     self.recorder.note("run ended early: step() returned False")
                     break
+            loop_end = now()
             if self._stop:
                 status = schema.STATUS_INTERRUPTED
                 exit_code = EXIT_INTERRUPTED
         except KeyboardInterrupt:
+            loop_end = now()
             status = schema.STATUS_INTERRUPTED
             exit_code = EXIT_INTERRUPTED
         except Exception as exc:  # noqa: BLE001 - we must still emit metrics
+            loop_end = now()
             status = schema.STATUS_FAILED
             failure = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
             exit_code = EXIT_FAILED
@@ -150,7 +157,7 @@ class BoundedRunner(ABC):
             except Exception as exc:  # noqa: BLE001
                 self.recorder.note(f"teardown raised: {type(exc).__name__}: {exc}")
             self.power.stop()
-            self.recorder.finish(status=status, failure=failure)
+            self.recorder.finish(status=status, failure=failure, t_end=loop_end)
             if self.metrics_out is not None:
                 self.recorder.write(self.metrics_out)
             self.power.close()

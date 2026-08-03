@@ -324,6 +324,42 @@ def test_runner_stops_cleanly_when_source_is_exhausted(tmp_path, synthetic_cfg):
     assert any("ended early" in n for n in doc["run"]["notes"])
 
 
+class _SlowTeardownRunner(BoundedRunner):
+    """Teardown costs 400 ms — like releasing a DSHOW camera (measured ~250 ms)."""
+
+    name = "slow_teardown"
+
+    def setup(self):
+        self.n = 0
+
+    def step(self) -> bool:
+        self.n += 1
+        self.recorder.record_frame_captured(self.n)
+        return True
+
+    def teardown(self):
+        import time
+
+        time.sleep(0.4)
+
+
+def test_measured_window_excludes_teardown(tmp_path, synthetic_cfg):
+    """Rate metrics must not be deflated by cleanup time.
+
+    Regression: a real 5 s webcam run read 152 frames at a true 30.2 FPS but reported 28.7 FPS,
+    purely because `cap.release()` was inside the measured window.
+    """
+    out = tmp_path / "m.json"
+    runner = _SlowTeardownRunner(cfg=synthetic_cfg, duration_s=1.0, metrics_out=out)
+    assert runner.run() == EXIT_OK
+
+    doc = json.loads(out.read_text(encoding="utf-8"))
+    # Window is the 1 s loop, not 1.4 s including teardown.
+    assert doc["run"]["duration_actual_s"] < 1.2, (
+        f"teardown leaked into the measured window: {doc['run']['duration_actual_s']}s"
+    )
+
+
 def test_metrics_out_parent_directories_are_created(tmp_path, synthetic_cfg):
     out = tmp_path / "deep" / "nested" / "m.json"
     assert _CountingRunner(cfg=synthetic_cfg, duration_s=0.2, metrics_out=out).run() == EXIT_OK

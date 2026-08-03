@@ -1,6 +1,6 @@
 # STATUS — where Peripheral is, and where it's going
 
-**Last updated:** 2026-08-01 · **Current phase:** 0 (scaffold + telemetry) · **Branch:** `phase1`
+**Last updated:** 2026-08-03 · **Current phase:** 0 COMPLETE, awaiting confirmation · **Branch:** `phase1`
 
 This file is the single place to look to answer "what is done, what is assumed, what is next."
 Update it at every phase boundary. `PROMPT.md` is the plan; `CLAUDE.md` is the operating manual.
@@ -42,7 +42,7 @@ Everything else is scaffolding for those two plots.
 
 | Phase | What it delivers | Exit criterion | State |
 |---|---|---|---|
-| **0** | Scaffold, Hydra configs, **telemetry**, bounded-runner contract | `pytest tests/test_phase0.py` passes; 5 s run emits valid metrics JSON | **IN PROGRESS** |
+| **0** | Scaffold, Hydra configs, **telemetry**, bounded-runner contract | `pytest tests/test_phase0.py` passes; 5 s run emits valid metrics JSON | **✅ 62 passed · 30.34 FPS · valid JSON** |
 | 1 | Async pipeline (threads + bounded queues + backpressure) & naive per-frame VLM baseline | capture ≥25 FPS with VLM stage saturated; `results/phase1_naive_baseline.png` | not started |
 | 2 | Fast tier: frame diff, small embedding encoder, scene-change + novelty scoring | sustained FPS over 30 s headless, per-stage timings in metrics JSON | not started |
 | 3 | Slow tier: 3–4 small VLMs × GGUF quant levels, KV reuse, streaming decode | comparison table in `RESULTS.md`; **p95 TTFT < 400 ms** test | not started |
@@ -67,7 +67,7 @@ Measured on 2026-08-01 by execution, not by reading docs.
 | Power | 4.32 W idle, **95.0 W enforced cap** |
 | NVML | power / VRAM / util / temp all return real values → energy-per-query is viable |
 | Python / Torch | 3.12.10 · 2.11.0+cu128 (CUDA 12.8) |
-| Webcam | **30 FPS hard ceiling at every mode tested, up to 1080p MJPG** |
+| Webcam | 30 FPS ceiling at every mode up to 1080p MJPG — **but only with exposure pinned; see below** |
 
 **Webcam backend choice — `CAP_DSHOW`.** Throughput is identical to MSMF (29.95 vs 29.85 FPS) but
 the tail is tighter: p99 **51.1 ms vs 65.1 ms**, max 54 vs 66 ms. Jitter is what hurts a capture
@@ -76,6 +76,39 @@ from config, not the driver.
 
 **1080p is free.** 1920×1080 MJPG sustains 29.6 FPS — the sensor caps us, not the bus. Resolution
 is therefore a quality knob we can spend without a throughput penalty.
+
+### ⚠️ Capture frame rate depends on room lighting — this nearly invalidated every FPS criterion
+
+Found while building Phase 0, not by looking for it. The first webcam smoke run returned **19.2 FPS**
+from the same code path that had measured 29.9 FPS ninety minutes earlier. Codec and
+`CAP_PROP_FPS` were ruled out by isolation; the cause is **auto-exposure trading frame rate for
+exposure time as the room darkens** — silently, with no error and no dropped-frame signal:
+
+| Condition | FPS | Frame brightness |
+|---|---|---|
+| Auto-exposure, good light (19:40) | 29.9 | 126 / 255 |
+| Auto-exposure, dimmer (20:15) | 19.9 | 135 |
+| Auto-exposure, dimmer still (20:30) | **10.0** | 162 |
+| **Manual, `exposure = -5` (31 ms)** | **30.1, repeatable ±0.1 over 3 trials** | varies with room |
+| Manual, `exposure = -4` (62 ms) | 16.0 | — |
+
+`-5` is `log2(seconds)` = 1/32 s = 31 ms — the longest exposure that fits a 33 ms frame budget.
+Anything longer cannot sustain 30 FPS, so the driver halves the rate instead.
+
+**Consequences, all load-bearing:**
+
+1. Every FPS-threshold exit criterion (Phase 1 ≥25, Phase 2 ≥30) would otherwise have depended on
+   **the time of day**. `configs/capture/webcam.yaml` now pins exposure; a test guards it.
+2. **The cost is real:** pinned exposure in a dim room produces near-black frames (measured
+   **1.6/255**) while every timing number still looks perfect. `WebcamSource` measures warmup
+   brightness, sets `too_dark` in the metrics file, and the runner prints a warning — a dark run
+   cannot pass as a result. `CAP_PROP_GAIN` does not compensate; the driver ignores it.
+3. **This threatens Phase 4's headline experiment.** The clips with "slow lighting drift and no
+   semantic event" are exactly the false-trigger cases. Recorded on auto-exposure, they would have
+   *frame-rate drift baked into the clip itself*, confounding the very failure mode being measured.
+   **Record all clips with exposure pinned and lighting controlled.**
+4. `capture=webcam_demo` exists for the Phase 7 GUI (auto-exposure, usable image, drifting FPS).
+   It is not comparable to benchmark runs and says so in its own config.
 
 ---
 
@@ -176,6 +209,8 @@ Rejected approaches belong here with their reasons.
 | D4 | Metrics recorder is event-based, aggregates computed at finalize | Percentiles, rates and energy integration all need the raw series; deriving them live bakes in assumptions we may want to revisit | Live-updating counters — cheaper, but unrecoverable if a definition changes |
 | D5 | Unmeasured metrics serialize as `null`, never `0` | A zero must mean "measured, and it was zero". Silent zeros are how a results table lies. | Zero-filling — simpler schema, dishonest output |
 | D6 | Phase 0 frame source is deliberately synchronous | The async pipeline is Phase 1's deliverable; Phase 0 only needs *a* source to prove telemetry end-to-end | Building the threaded pipeline now — merges phases, loses the naive baseline |
+| D7 | Pin webcam exposure (`auto_exposure=0.25`, `exposure=-5`) for all benchmark runs | Auto-exposure silently trades frame rate for exposure time: measured 30 → 20 → 10 FPS across one evening. Pinned gives 30.1 FPS repeatable ±0.1. | Leaving auto-exposure on — usable image in any light, but FPS depends on the room and no benchmark is reproducible |
+| D8 | The measured window closes when the *work* stops, not when cleanup finishes | `cap.release()` on DSHOW costs ~250 ms. Folding it in reported a true 30.2 FPS as 28.7 FPS — a 5% understatement of every rate metric, in our own favour nowhere and against us here, but wrong either way. | Wall-clock from `run()` entry to exit — simpler, and silently wrong |
 
 ---
 
@@ -193,7 +228,42 @@ of them is cheap right now and expensive later.
 
 ---
 
-## 8. Next action
+## 8. Phase 0 results
 
-Finish Phase 0: run `pytest tests/test_phase0.py`, produce a 5-second bounded run emitting valid
-metrics JSON, report both numbers, tag `phase-0-scaffold`, **and stop for confirmation.**
+`pytest tests/ -q` → **62 passed**, 24 s.
+
+5-second bounded run, real webcam, `results/phase0_smoke.json`:
+
+| | |
+|---|---|
+| status / exit code | `completed` / 0 |
+| duration requested → actual | 5.0 s → **5.0103 s** |
+| frames captured / dropped | 152 / 0 (drop rate 0.0) |
+| **achieved FPS** | **30.337** |
+| inter-frame ms p50 / p95 / p99 / max | 32.03 / 47.84 / 49.05 / 50.57 |
+| GPU power mean / peak | 11.65 W / 13.5 W → **60.80 J** over the run |
+| peak VRAM (NVML, board-wide) | 0.442 GB |
+| frame brightness / `too_dark` | 40.95 / False |
+| VLM metric families | all `null` — no VLM ran, and the file says so |
+
+The last row is the point of Phase 0: the smoke runner does not invoke a VLM, so photon-to-answer,
+staleness, accuracy and false-trigger all serialize as `null`. Fabricating those events to make the
+JSON look complete is exactly the failure this project must not have. Their derivation is proven by
+unit tests driving synthetic events with known timestamps.
+
+**What the 62 tests actually assert** — schema enforcement (every metric family in `PROMPT.md` is
+required, an `n=0` percentile block is rejected as the shape of a lie); latency measured from the
+triggering frame's t0; staleness as the age of *evidence*, not of the answer; false-trigger rate
+null without labels; the bounded-runner contract including the crash path; and the two regressions
+above (exposure pinned, teardown outside the measured window).
+
+---
+
+## 9. Next action
+
+**Phase 0 is complete and awaiting confirmation.** Do not start Phase 1 until it is given.
+
+Phase 1 is: threaded capture/fast-tier/VLM/render stages joined by bounded queues with a documented
+backpressure policy, then the naive per-frame VLM baseline via `llama-server`, producing
+`results/phase1_naive_baseline.png`. The first real decision there is measuring the HTTP + SSE
+overhead of the `llama-server` path (D2) so it can be stated rather than assumed.

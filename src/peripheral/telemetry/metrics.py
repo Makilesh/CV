@@ -97,11 +97,18 @@ class MetricsRecorder:
             self._t_start = now()
             return self._t_start
 
-    def finish(self, status: str, failure: str | None = None) -> None:
+    def finish(self, status: str, failure: str | None = None, t_end: float | None = None) -> None:
+        """Close the measured window.
+
+        `t_end` must be the instant the *work* stopped, not the instant cleanup finished. Teardown
+        is not free — releasing a DSHOW camera takes ~250 ms — and folding it into the window
+        deflates every rate metric derived from it. Measured: 152 frames read at a true 30.2 FPS
+        reported as 28.7 FPS purely because `cap.release()` was inside the window.
+        """
         if status not in schema.ALL_STATUSES:
             raise ValueError(f"unknown status {status!r}")
         with self._lock:
-            self._t_end = now()
+            self._t_end = now() if t_end is None else t_end
             self._status = status
             self._failure = failure
 
