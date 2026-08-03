@@ -1,6 +1,6 @@
 # STATUS — where Peripheral is, and where it's going
 
-**Last updated:** 2026-08-03 · **Current phase:** 0 COMPLETE, awaiting confirmation · **Branch:** `phase1`
+**Last updated:** 2026-08-04 · **Current phase:** 1 COMPLETE, awaiting confirmation · **Branch:** `phase1`
 
 This file is the single place to look to answer "what is done, what is assumed, what is next."
 Update it at every phase boundary. `PROMPT.md` is the plan; `CLAUDE.md` is the operating manual.
@@ -43,7 +43,7 @@ Everything else is scaffolding for those two plots.
 | Phase | What it delivers | Exit criterion | State |
 |---|---|---|---|
 | **0** | Scaffold, Hydra configs, **telemetry**, bounded-runner contract | `pytest tests/test_phase0.py` passes; 5 s run emits valid metrics JSON | **✅ 62 passed · 30.34 FPS · valid JSON** |
-| 1 | Async pipeline (threads + bounded queues + backpressure) & naive per-frame VLM baseline | capture ≥25 FPS with VLM stage saturated; `results/phase1_naive_baseline.png` | not started |
+| 1 | Async pipeline (threads + bounded queues + backpressure) & naive per-frame VLM baseline | capture ≥25 FPS with VLM stage saturated; `results/phase1_naive_baseline.png` | **✅ 77 passed · 30.4 FPS vs 10.2 calls/s · chart built** |
 | 2 | Fast tier: frame diff, small embedding encoder, scene-change + novelty scoring | sustained FPS over 30 s headless, per-stage timings in metrics JSON | not started |
 | 3 | Slow tier: 3–4 small VLMs × GGUF quant levels, KV reuse, streaming decode | comparison table in `RESULTS.md`; **p95 TTFT < 400 ms** test | not started |
 | 4 | **The scheduler** — pluggable trigger policies, swept against the oracle | `results/phase4_pareto.png`; ≥85% oracle accuracy at ≤20% oracle calls | not started |
@@ -211,6 +211,10 @@ Rejected approaches belong here with their reasons.
 | D6 | Phase 0 frame source is deliberately synchronous | The async pipeline is Phase 1's deliverable; Phase 0 only needs *a* source to prove telemetry end-to-end | Building the threaded pipeline now — merges phases, loses the naive baseline |
 | D7 | Pin webcam exposure (`auto_exposure=0.25`, `exposure=-5`) for all benchmark runs | Auto-exposure silently trades frame rate for exposure time: measured 30 → 20 → 10 FPS across one evening. Pinned gives 30.1 FPS repeatable ±0.1. | Leaving auto-exposure on — usable image in any light, but FPS depends on the room and no benchmark is reproducible |
 | D8 | The measured window closes when the *work* stops, not when cleanup finishes | `cap.release()` on DSHOW costs ~250 ms. Folding it in reported a true 30.2 FPS as 28.7 FPS — a 5% understatement of every rate metric, in our own favour nowhere and against us here, but wrong either way. | Wall-clock from `run()` entry to exit — simpler, and silently wrong |
+| D9 | The VLM stage takes the **newest** queued frame and discards the backlog (`drain_newest`) | Answering about a stale frame is strictly worse than answering about the current one, and processing a backlog would hide queue wait inside "processing time" — flattering the latency numbers | FIFO — preserves order, but every answer describes the past and latency becomes unbounded under saturation |
+| D10 | Queue sizes stay small (capture 4, VLM 2, answer 8) | A deep queue buys no throughput when the consumer is 3× slower; it only converts *dropped frames* into *stale answers*, moving the damage from a visible metric into an invisible one | Deep queues — smoother-looking drop rate, worse and less honest staleness |
+| D11 | **Rejected HTTP connection pooling.** Client keeps plain `urllib`, one connection per call | Measured: pooling fixes a bare `GET /health` (15.08 → 0.46 ms p50) but does **nothing** for completions (15.14 ms fresh vs 15.58 ms pooled). The ~15 ms floor is llama-server's task scheduling, not transport, so pooling adds a moving part for no measured gain | `requests.Session` — better practice in the abstract, zero measured benefit here |
+| D12 | Phase 1 baseline uses the **smallest credible** VLM (SmolVLM2-500M), not a representative one | Phase 1 must show per-frame inference cannot keep up. A large model makes that trivially true and easy to dismiss with "use a smaller model". If even the smallest cannot, nothing can. | A 2B–4B model — more representative of final quality, weaker as an argument. Phase 3 does the real sweep |
 
 ---
 
@@ -259,11 +263,61 @@ above (exposure pinned, teardown outside the measured window).
 
 ---
 
-## 9. Next action
+## 9. Phase 1 results — the motivating failure, quantified
 
-**Phase 0 is complete and awaiting confirmation.** Do not start Phase 1 until it is given.
+`pytest tests/ -q` → **77 passed**, 50 s (includes a 20-second real-hardware pipeline run).
 
-Phase 1 is: threaded capture/fast-tier/VLM/render stages joined by bounded queues with a documented
-backpressure policy, then the naive per-frame VLM baseline via `llama-server`, producing
-`results/phase1_naive_baseline.png`. The first real decision there is measuring the HTTP + SSE
-overhead of the `llama-server` path (D2) so it can be stated rather than assumed.
+Chart: `results/phase1_naive_baseline.png`. Two 60-second runs, `SmolVLM2-500M-Video-Instruct-Q8_0`
+on llama.cpp CUDA 13.3, VLM invoked on every frame it can get.
+
+| | live webcam | recorded clip |
+|---|---|---|
+| capture FPS | **30.40** | 30.28 |
+| VLM calls/s | **10.2** | 10.9 |
+| **throughput deficit** | **3.0×** | 2.8× |
+| frames dropped | 39.8% | 39.0% |
+| photon→first-token p50 / p95 | 70 / 92 ms | 69 / 87 ms |
+| photon→answer p50 / p95 / p99 | **115 / 138 / 150 ms** | 107 / 129 / 136 ms |
+| GPU power mean / peak | 65.6 W / 103.6 W | 64.6 W / 73.3 W |
+| energy per answer | **6.47 J** | 6.04 J |
+| peak VRAM | 1.47 GB | 1.47 GB |
+
+**The exit criterion holds: capture sustained 30.4 FPS with the VLM stage saturated.** The pipeline
+is genuinely decoupled — `capture_q` and `answer_q` sit at mean depth 0.00 while `vlm_q` is pinned
+at its bound of 2. The bottleneck is exactly one stage, and the capture thread never felt it.
+
+### Three findings worth more than the chart
+
+1. **Per-frame VLM inference is outside the power envelope, not just the time budget.** At 6.47 J
+   per answer, a 30 FPS per-frame oracle would need **197 W sustained** against a **95 W** enforced
+   cap — **2.1× over budget**. Even with infinite time, this laptop cannot run per-frame inference.
+   That is a stronger motivation than latency alone and it is measured, not argued.
+2. **Latency is dominated by the model, not our plumbing.** Per-stage p50: `capture_read` 32.09 ms
+   (camera-paced), `vlm_encode_jpeg` 0.84 ms, `fast_tier` and `render` ~0.00 ms, `vlm_total`
+   97.66 ms. The scheduler has ~98 ms of VLM cost to avoid and ~1 ms of our own overhead to worry
+   about. **The fast tier's entire Phase 2 budget is ~10 ms — it has room.**
+3. **There is a ~15 ms scheduling floor on every llama-server call** that no amount of client
+   tuning removes (D11). Phase 3's 400 ms p95 TTFT target has to be met *including* it.
+
+### What this does not yet show
+
+The 3.0× deficit is with the **smallest credible** VLM (500M). A model chosen for answer quality
+will be far worse — Phase 3 measures how much. The naive baseline also answers a fixed prompt with
+no notion of a query, so `accuracy_vs_oracle` and `false_trigger_rate` remain `null`: there is no
+oracle to compare against until Phase 4 builds one.
+
+Answer staleness tracks photon-to-answer almost exactly (115.2 vs 115.2 ms) because in the naive
+baseline every answer's evidence *is* the frame that triggered it. Staleness only becomes an
+independent metric once the cache (Phase 5) starts serving answers from older evidence.
+
+---
+
+## 10. Next action
+
+**Phase 1 is complete and awaiting confirmation.** Do not start Phase 2 until it is given.
+
+Phase 2 is the fast tier: frame differencing, a small embedding encoder (benchmark 2–3 of
+DINOv2-small / small CLIP / MobileNet), scene-change scoring and novelty against a rolling
+reference — sustaining 30 FPS with the VLM disabled, ONNX Runtime measured against raw PyTorch.
+Per finding 2 above it has a ~10 ms budget per frame, and per Q1 in §7 the exit criterion should be
+read as ≥29.5 FPS live plus ≥30 FPS on a file source.
