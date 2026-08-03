@@ -21,12 +21,45 @@ learned encoder has not earned its milliseconds.
 
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Sequence
 
 import cv2
 import numpy as np
+
+_ORT_DLLS_READY = False
+
+
+def _ensure_cuda_dlls() -> str | None:
+    """Point ONNX Runtime at CUDA DLLs before it is imported. Windows-specific, and load-bearing.
+
+    Measured 2026-08-04: the PyPI `onnxruntime-gpu` 1.28 wheel is built against CUDA 13 and fails
+    to load its CUDA provider here (`cublasLt64_13.dll` missing), silently falling back to CPU —
+    the session still reports success, so a CPU number can masquerade as a GPU one. The CUDA 13
+    runtime wheels NVIDIA publishes are Linux-only, so there is no pip route to satisfy 1.28.
+
+    We pin `onnxruntime-gpu==1.26.0` (CUDA 12) and reuse the CUDA 12.8 + cuDNN 9 DLLs that torch
+    already ships, which are known-good on this machine. Returns the directory added, or None.
+    """
+    global _ORT_DLLS_READY
+    if _ORT_DLLS_READY:
+        return None
+    _ORT_DLLS_READY = True
+    if not hasattr(os, "add_dll_directory"):
+        return None
+    try:
+        import torch
+
+        lib = Path(torch.__file__).parent / "lib"
+        if lib.is_dir():
+            os.add_dll_directory(str(lib))
+            return str(lib)
+    except Exception:  # noqa: BLE001 - absence of torch is not fatal for a CPU-only run
+        return None
+    return None
+
 
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
@@ -159,7 +192,9 @@ class OnnxEncoder(Encoder):
         providers: Sequence[str] | None = None,
         clip_norm: bool = False,
         label: str | None = None,
+        allow_cpu_fallback: bool = False,
     ) -> None:
+        _ensure_cuda_dlls()
         import onnxruntime as ort
 
         self.onnx_path = Path(onnx_path)
