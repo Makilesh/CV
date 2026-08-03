@@ -90,6 +90,7 @@ class MetricsRecorder:
         self._accuracy: list[dict[str, Any]] = []
         self._events_truncated = False
         self._notes: list[str] = []
+        self._extra: dict[str, Any] = {}
 
     # -- lifecycle -----------------------------------------------------------------------
     def start(self) -> float:
@@ -116,6 +117,16 @@ class MetricsRecorder:
         """Free-text caveat carried into the metrics file. Use for anything that qualifies a number."""
         with self._lock:
             self._notes.append(text)
+
+    def record_extra(self, key: str, value: Any) -> None:
+        """Structured, run-specific results that are not one of the standard metric families.
+
+        Lands in the `extra` block, kept separate from `metrics` so the standard families stay a
+        fixed, comparable schema across every phase. Used by benchmark runs (Phase 2 encoder
+        sweep, Phase 3 model sweep) whose output is a table rather than a time series.
+        """
+        with self._lock:
+            self._extra[key] = value
 
     # -- capture -------------------------------------------------------------------------
     def record_frame_captured(self, frame_id: int, t: float | None = None) -> float:
@@ -367,6 +378,7 @@ class MetricsRecorder:
                 "config": self.config,
                 "definitions": dict(schema.DEFINITIONS),
                 "metrics": self._metrics_block(),
+                "extra": dict(self._extra),
                 "events": self._events_block(),
             }
         schema.validate_metrics(doc)
