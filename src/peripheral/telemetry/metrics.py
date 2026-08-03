@@ -335,7 +335,9 @@ class MetricsRecorder:
             }
             if self._triggers
             else None,
-            "power": self.power.summary(n_queries=n_calls or None)
+            "power": self.power.summary(
+                n_queries=n_calls or None, include_series=self.keep_events
+            )
             if self.power is not None
             else None,
             "vram": self.power.vram_summary() if self.power is not None else None,
@@ -352,6 +354,11 @@ class MetricsRecorder:
                     "failure": self._failure,
                     "duration_requested_s": self.duration_requested_s,
                     "duration_actual_s": round(self.duration_s, 4),
+                    # Origin for every monotonic timestamp in this file, so time series from
+                    # different sources (power, queue depth, events) share one x-axis.
+                    "t_start_monotonic": (
+                        round(self._t_start, 6) if self._t_start is not None else None
+                    ),
                     "started_utc": self._wall["utc"],
                     "wall_anchor": self._wall,
                     "notes": list(self._notes),

@@ -128,8 +128,14 @@ class PowerSampler:
             return None
 
     # -- derived --------------------------------------------------------------------------
-    def summary(self, n_queries: int | None = None) -> dict[str, Any]:
-        """Power block for the metrics file. Every field is null when NVML was unavailable."""
+    def summary(
+        self, n_queries: int | None = None, include_series: bool = False
+    ) -> dict[str, Any]:
+        """Power block for the metrics file. Every field is null when NVML was unavailable.
+
+        `include_series` keeps the raw samples so power-over-time can be plotted and energy
+        recomputed if the integration method ever changes.
+        """
         with self._lock:
             samples = list(self.samples)
 
@@ -178,6 +184,15 @@ class PowerSampler:
             "energy_marginal_per_query_j": _r(marginal_per_query),
             "mean_util_pct": _r(sum(s.util_gpu_pct for s in samples) / len(samples), 1),
             "peak_temp_c": max(s.temp_c for s in samples),
+            "series": (
+                [
+                    [round(s.t, 6), round(s.power_w, 3), s.mem_used_b, s.util_gpu_pct]
+                    for s in samples
+                ]
+                if include_series
+                else None
+            ),
+            "series_columns": ["t_monotonic", "power_w", "mem_used_b", "util_gpu_pct"],
         }
 
     def vram_summary(self) -> dict[str, Any]:
