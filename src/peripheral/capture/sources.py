@@ -44,6 +44,8 @@ class Frame:
     frame_id: int
     t_capture: float
     image: np.ndarray
+    #: Fast-tier scores, attached by FastTierStage. None until Phase 2's fast tier runs.
+    scores: Any | None = None
 
     @property
     def shape(self) -> tuple[int, ...]:

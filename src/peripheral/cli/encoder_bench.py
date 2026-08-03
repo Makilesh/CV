@@ -100,6 +100,7 @@ def build(spec: dict[str, Any], models_dir: Path) -> Encoder:
             providers=spec.get("providers"),
             clip_norm=spec.get("clip_norm", False),
             label=f"{spec['model']}@{spec.get('input_size', 224)}-onnx",
+            allow_cpu_fallback=spec.get("allow_cpu_fallback", False),
         )
     raise ValueError(f"unknown candidate kind {kind!r}")
 

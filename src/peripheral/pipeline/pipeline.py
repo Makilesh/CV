@@ -37,9 +37,12 @@ class Pipeline:
         max_tokens: int = 32,
         queue_sample_hz: float = 20.0,
         headless: bool = True,
+        fast_tier: Any | None = None,
+        enable_vlm: bool = True,
     ) -> None:
         self.recorder = recorder
         self.stop_event = threading.Event()
+        self.enable_vlm = bool(enable_vlm)
 
         def on_drop(frame_id: int | None, stage: str, reason: str) -> None:
             recorder.record_frame_dropped(frame_id if frame_id is not None else -1, stage, reason)
@@ -53,13 +56,24 @@ class Pipeline:
         )
 
         self.capture = CaptureStage(source, self.capture_q, recorder, self.stop_event)
-        self.fast_tier = FastTierStage(self.capture_q, self.vlm_q, recorder, self.stop_event)
-        self.vlm = VlmStage(
-            client, self.vlm_q, self.answer_q, recorder, self.stop_event, prompt, max_tokens
+        self.fast_tier = FastTierStage(
+            self.capture_q, self.vlm_q, recorder, self.stop_event, fast_tier=fast_tier
         )
-        self.render = RenderStage(self.answer_q, recorder, self.stop_event, headless=headless)
+        self.stages: list[Stage] = [self.capture, self.fast_tier]
 
-        self.stages: list[Stage] = [self.capture, self.fast_tier, self.vlm, self.render]
+        # With the VLM disabled (Phase 2), the fast tier's output is drained by the render stage
+        # so the pipeline shape is unchanged and the fast tier is measured under real backpressure
+        # rather than into a void.
+        if self.enable_vlm:
+            self.vlm = VlmStage(
+                client, self.vlm_q, self.answer_q, recorder, self.stop_event, prompt, max_tokens
+            )
+            self.render = RenderStage(self.answer_q, recorder, self.stop_event, headless=headless)
+            self.stages += [self.vlm, self.render]
+        else:
+            self.vlm = None
+            self.render = RenderStage(self.vlm_q, recorder, self.stop_event, headless=headless)
+            self.stages.append(self.render)
         self.sampler = QueueDepthSampler(
             [self.capture_q, self.vlm_q, self.answer_q], recorder, self.stop_event, queue_sample_hz
         )
@@ -86,4 +100,5 @@ class Pipeline:
         return {
             "queues": [q.stats() for q in (self.capture_q, self.vlm_q, self.answer_q)],
             "stages": {s.stage_name: s.n_processed for s in self.stages},
+            "vlm_enabled": self.enable_vlm,
         }

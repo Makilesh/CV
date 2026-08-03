@@ -212,6 +212,17 @@ class OnnxEncoder(Encoder):
         self.session = ort.InferenceSession(str(self.onnx_path), opts, providers=use)
         self.providers = self.session.get_providers()
 
+        # ORT falls back to CPU silently when a provider's DLLs are missing: the session is
+        # created, `run` works, and a CPU latency number gets reported as a GPU one. Refuse.
+        if not allow_cpu_fallback:
+            asked_gpu = [p for p in wanted if p != "CPUExecutionProvider"]
+            if asked_gpu and not any(p in self.providers for p in asked_gpu):
+                raise RuntimeError(
+                    f"ONNX Runtime fell back to CPU: asked for {asked_gpu}, bound "
+                    f"{self.providers}. A CPU number must not be reported as a GPU one. "
+                    "Pass allow_cpu_fallback=True to measure CPU deliberately."
+                )
+
         self._in = self.session.get_inputs()[0].name
         self._out = self.session.get_outputs()[0].name
         self.dim = int(self.session.get_outputs()[0].shape[-1])
