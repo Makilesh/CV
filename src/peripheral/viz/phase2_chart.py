@@ -202,12 +202,14 @@ def _panel_throughput(ax, live, unpaced) -> None:
         bars["headroom\n(unpaced)"] = ft["n_scored"] / unpaced["run"]["duration_actual_s"]
 
     colors = [C["budget"], C["onnx"], C["control"]][: len(bars)]
-    ax.bar(list(bars), list(bars.values()), 0.55, color=colors)
-    for i, v in enumerate(bars.values()):
-        ax.text(i, v * 1.06, f"{v:.0f}", ha="center", fontsize=10, fontweight="bold")
+    vals = list(bars.values())
+    ax.bar(list(bars), vals, 0.55, color=colors)
+    ax.set_ylim(0, max(vals) * 1.22)
+    for i, v in enumerate(vals):
+        ax.text(i, v + max(vals) * 0.03, f"{v:.0f}", ha="center", fontsize=10, fontweight="bold")
     if unpaced:
-        ax.annotate(f"{list(bars.values())[2] / 30:.1f}x headroom", xy=(2, list(bars.values())[2] * 0.55),
-                    ha="center", fontsize=9, fontweight="bold", color="white")
+        ax.text(2, vals[2] * 0.45, f"{vals[2] / 30:.1f}x\nheadroom", ha="center", va="center",
+                fontsize=10, fontweight="bold", color="white")
     ax.set_ylabel("frames per second")
     ax.set_title("Throughput, VLM disabled", fontsize=11, fontweight="bold")
     ax.tick_params(axis="x", labelsize=8)
