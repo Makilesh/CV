@@ -20,4 +20,5 @@ markers = [
     "slow: takes more than ~2 seconds of wall clock",
     "webcam: needs a physical camera; skipped when none is present",
     "gpu: needs CUDA; skipped on the CPU-only CI runner",
+    "vlm: needs the llama.cpp binary and model weights (~500 MB); skipped when absent",
 ]
