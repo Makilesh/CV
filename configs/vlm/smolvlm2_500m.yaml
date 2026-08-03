@@ -1,0 +1,27 @@
+# SmolVLM2-500M-Video-Instruct, Q8_0 — the Phase 1 naive baseline model.
+#
+# WHY THE SMALLEST CREDIBLE VLM, not a representative one: Phase 1 exists to show that per-frame
+# VLM inference cannot keep up with a 30 FPS camera. Choosing a large model would make that
+# trivially true and easy to dismiss with "use a smaller model". Choosing the smallest credible
+# video VLM makes the argument as strong as it can be — if even this cannot sustain per-frame
+# inference, nothing available can. Phase 3 does the real model x quantization sweep.
+#
+# Verified: llama.cpp b10242, win-cuda-13.3 asset, RTX 5070 Ti Laptop (sm_120). The cuda-12.4
+# asset is deliberately unused — CUDA 12.4 predates Blackwell consumer silicon.
+name: SmolVLM2-500M-Video-Instruct-Q8_0
+binary: vendor/llama.cpp/llama-server.exe
+model: models/SmolVLM2-500M/SmolVLM2-500M-Video-Instruct-Q8_0.gguf
+mmproj: models/SmolVLM2-500M/mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf
+
+host: 127.0.0.1
+port: 8080
+n_gpu_layers: 99      # whole model on GPU; 500M Q8_0 is ~420 MB, trivial against 12 GB
+ctx_size: 4096
+
+# JPEG quality for the frame we hand the server. This is OUR cost, inside the latency budget,
+# not the model's. Measured in the metrics file as stage `vlm_encode_jpeg`.
+jpeg_quality: 85
+
+autostart: true       # start and own a server; attaches to a healthy one already on the port
+startup_timeout_s: 300.0
+extra_args: []
