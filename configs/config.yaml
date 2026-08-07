@@ -7,6 +7,9 @@ defaults:
   - vlm: smolvlm2_500m
   - fasttier: default
   - encoder_bench: default
+  - vlm_bench: default
+  - kv_reuse: default
+  - hf_reference: default
   - _self_
 
 seed: 1337

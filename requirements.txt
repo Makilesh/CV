@@ -34,6 +34,15 @@ onnxruntime-gpu==1.26.0
 # --- figures ----------------------------------------------------------------
 matplotlib==3.11.1
 
+# --- QUALITY REFERENCE ONLY (Phase 3) ---------------------------------------
+# transformers + bitsandbytes exists solely to answer "is the llama.cpp path losing quality
+# relative to the reference implementation of the same weights". NO LATENCY NUMBER FROM THIS PATH
+# MAY APPEAR IN ANY RESULT: no flash-attention on Windows, no fused kernels, Python generation
+# loop. peripheral.cli.hf_reference writes null for every latency family on purpose.
+transformers==5.14.1
+accelerate==1.14.0
+bitsandbytes==0.50.0
+
 # --- test -------------------------------------------------------------------
 pytest==9.1.1
 

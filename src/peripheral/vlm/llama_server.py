@@ -168,6 +168,40 @@ class LlamaServerClient:
         self.stop()
 
     # -- inference -----------------------------------------------------------------------
+    @staticmethod
+    def build_payload(
+        image_b64: str,
+        prompt: str,
+        max_tokens: int = 32,
+        temperature: float = 0.0,
+        image_first: bool = False,
+        system: str | None = None,
+        stream: bool = True,
+    ) -> dict[str, Any]:
+        """Assemble the chat-completions request.
+
+        Split out from `describe` so prompt ordering — which decides whether any KV-cache reuse is
+        possible at all — can be tested without a running server.
+        """
+        text_part = {"type": "text", "text": prompt}
+        image_part = {
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"},
+        }
+        content = [image_part, text_part] if image_first else [text_part, image_part]
+
+        messages: list[dict[str, Any]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": content})
+
+        return {
+            "messages": messages,
+            "max_tokens": int(max_tokens),
+            "temperature": temperature,
+            "stream": bool(stream),
+        }
+
     def describe(
         self,
         image: np.ndarray,
@@ -175,11 +209,21 @@ class LlamaServerClient:
         max_tokens: int = 32,
         on_first_token: Callable[[], None] | None = None,
         temperature: float = 0.0,
+        image_first: bool = False,
+        system: str | None = None,
+        stream: bool = True,
     ) -> VlmResult:
-        """One streaming vision call.
+        """One vision call.
 
         `on_first_token` fires the instant the first content token arrives, so the recorder can
         timestamp TTFT at the point it actually happens rather than after the response completes.
+
+        `image_first` controls prompt ordering, which decides whether KV-cache reuse is possible at
+        all. Image tokens differ on every frame, so putting the image first leaves no shared prefix
+        between calls; putting the fixed instruction text first makes that text a cacheable prefix.
+
+        `stream=False` waits for the complete answer before returning, so the benefit of streaming
+        decode can be measured rather than asserted.
         """
         t_encode = now()
         ok, buf = cv2.imencode(
@@ -190,23 +234,9 @@ class LlamaServerClient:
         b64 = base64.b64encode(buf.tobytes()).decode("ascii")
         encode_ms = (now() - t_encode) * 1000.0
 
-        payload = {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
-                        },
-                    ],
-                }
-            ],
-            "max_tokens": int(max_tokens),
-            "temperature": temperature,
-            "stream": True,
-        }
+        payload = self.build_payload(
+            b64, prompt, max_tokens, temperature, image_first, system, stream
+        )
         req = urllib.request.Request(
             f"{self.base_url}/v1/chat/completions",
             data=json.dumps(payload).encode(),
@@ -217,6 +247,26 @@ class LlamaServerClient:
         t_first: float | None = None
         chunks: list[str] = []
         n_tokens = 0
+
+        if not stream:
+            # Non-streaming: nothing arrives until the whole answer is done, so there is no
+            # meaningful TTFT — that absence is the point of the comparison.
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                doc = json.loads(resp.read())
+                status = resp.status
+            t_end = now()
+            text = doc["choices"][0]["message"]["content"]
+            usage = doc.get("usage") or {}
+            return VlmResult(
+                text=text,
+                n_tokens=usage.get("completion_tokens"),
+                encode_ms=round(encode_ms, 3),
+                ttft_ms=None,
+                total_ms=round((t_end - t_send) * 1000.0, 3),
+                http_status=status,
+                meta={"stream": False},
+            )
+
         with urllib.request.urlopen(req, timeout=120) as resp:
             status = resp.status
             for raw in resp:

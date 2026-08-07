@@ -1,0 +1,18 @@
+# Phase 3 quality reference: transformers + bitsandbytes.
+#
+# QUALITY ONLY. No latency number from this path may appear in any result. The metrics file this
+# run produces has null for every latency family, on purpose.
+#
+# Same model family as the chosen GGUF config, so the comparison isolates "GGUF + llama.cpp"
+# from "safetensors + transformers + bnb NF4" rather than mixing in a different model.
+model_id: Qwen/Qwen3-VL-2B-Instruct
+quant_type: nf4
+double_quant: true
+
+clip: data/clips/desk_60s.mp4
+n_frames: 20
+frame_stride: 90
+max_tokens: 48
+prompt: "Describe what you see in one short sentence."
+
+compare_to: results/phase3_vlm_bench.json
