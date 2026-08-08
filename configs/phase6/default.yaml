@@ -1,0 +1,62 @@
+# Phase 6 — evaluation.
+#
+# PROMPT.md: "This is the most likely place the project silently cheats." So the replay harness
+# enforces the no-future-frames invariant with three independent gates rather than one convention,
+# and the audit is written into every metrics file whether it passes or fails.
+
+clip: data/eval_clips/mixed.mp4
+
+# 1.0 for every measured run. Anything else is recorded in the metrics file so a fast replay can
+# never be mistaken for a realtime one.
+replay_speed: 1.0
+late_tolerance_ms: 50.0
+
+# Timestamped queries. A query is answered only from evidence that already existed at its timestamp;
+# QueryTimeline refuses anything else.
+query_every_s: 2.0
+query_text: "Describe what you see in one short sentence."
+max_tokens: 32
+
+# The Phase 4 winner. Ablations override these.
+policy_kind: embedding_novelty
+policy_value: 0.12
+use_fast_tier: true
+
+# Ablations. `match_budget: true` computes the interval from the full system's MEASURED call rate,
+# so "matched budget" means matched rather than approximately matched — an earlier hardcoded 8 s
+# handed the baseline 29% more calls than the system it was compared against.
+ablations:
+  - name: full_system
+    policy_kind: embedding_novelty
+    policy_value: 0.12
+    use_fast_tier: true
+    note: "the system as chosen in Phases 2-4"
+
+  - name: fixed_interval_matched
+    policy_kind: fixed_interval
+    policy_value: 0            # overwritten by match_budget
+    match_budget: true
+    use_fast_tier: true
+    note: "scheduler replaced by a timer at an exactly matched call budget."
+
+  - name: no_fast_tier
+    policy_kind: fixed_interval
+    policy_value: 0            # overwritten by match_budget
+    match_budget: true
+    use_fast_tier: false
+    note: >
+      Removing the fast tier removes the scheduler's only input, so it necessarily degenerates to a
+      timer. Identical to fixed_interval_matched by construction — which is itself the finding:
+      without the fast tier there is no scheduler left to have.
+
+  - name: motion_only
+    policy_kind: motion_threshold
+    policy_value: 0.015
+    use_fast_tier: true
+    note: "embedding replaced by pixel differencing — the motion-detector control"
+
+  - name: oracle
+    policy_kind: fixed_interval
+    policy_value: 0.0
+    use_fast_tier: true
+    note: "per-frame oracle — the upper bound, and unaffordable in real time"
