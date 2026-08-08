@@ -95,12 +95,35 @@ def score_against_reference(
 
 
 def self_consistency(first: Sequence[str], second: Sequence[str]) -> float | None:
-    """Same frame, same prompt, temperature 0, asked twice.
-
-    Anything below 1.0 means the serving path is not deterministic, which would make every quality
-    comparison in the table noisier than it looks.
-    """
+    """Exact-match rate between two passes over the same frames at temperature 0."""
     n = min(len(first), len(second))
     if n == 0:
         return None
     return round(sum(normalize(first[i]) == normalize(second[i]) for i in range(n)) / n, 4)
+
+
+def noise_floor(first: Sequence[str], second: Sequence[str]) -> dict[str, Any]:
+    """**The number that makes every other quality number readable.**
+
+    llama-server is not deterministic at temperature 0 — measured 2026-08-08, a model asked the
+    same frame twice back to back, with identical cache state and the prompt cache disabled,
+    returned a different string 67% of the time. The differences are paraphrase
+    ("looking thoughtfully toward" vs "at"), which is what floating-point noise flipping a near-tie
+    in greedy argmax looks like.
+
+    So a config scoring 0.85 content-F1 against its family reference has NOT necessarily lost 0.15
+    to quantization. It has lost 0.15 to quantization *and* serving noise, and the two are
+    inseparable unless you know how much a model disagrees with **itself**. That is this number:
+    ask the same config the same frames twice and score it against its own answers.
+
+    Read the table as: fidelity ≈ noise floor means no measurable quantization damage.
+    """
+    n = min(len(first), len(second))
+    if n == 0:
+        return {"n": 0, "self_content_f1": None, "self_exact_match": None}
+    f1s = [content_f1(first[i], second[i]) for i in range(n)]
+    return {
+        "n": n,
+        "self_content_f1": round(sum(f1s) / n, 4),
+        "self_exact_match": self_consistency(first, second),
+    }

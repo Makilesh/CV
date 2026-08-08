@@ -185,11 +185,19 @@ class HfReferenceRunner(BoundedRunner):
             "agreement_with_hf_reference": agreement,
             "gguf_noise_floor": floor,
             "verdict": (
-                "GGUF agreement with the transformers reference is at or above the GGUF path's "
-                "own noise floor — no quality loss attributable to llama.cpp is measurable here."
+                "Agreement is at or above the GGUF path's own noise floor: the two paths are as "
+                "close as one path is to itself, so no cross-path difference is measurable."
                 if (f1 is not None and nf is not None and f1 >= nf)
-                else "GGUF agreement sits below its own noise floor; the gap is a real cross-path "
-                     "difference, not serving noise."
+                else "Agreement sits below the GGUF path's own noise floor, so the gap is larger "
+                     "than serving noise and is real."
+            ),
+            "attribution_caveat": (
+                "This gap is NOT attributable to llama.cpp. bitsandbytes is 4-bit by construction, "
+                "so the reference is NF4 while the chosen GGUF config is Q8_0 — the comparison "
+                "varies quantization AND serving path together, and cannot separate them. "
+                "Inspect sample_pairs: both paths describe the same scene correctly and differ in "
+                "wording, which a bag-of-content-words F1 penalises. Treat this as a sanity check "
+                "that the llama.cpp path is not degenerate, not as a measurement of its loss."
             ),
             "sample_pairs": [
                 {"hf": self.answers[i][:160], "gguf": first[i][:160]}

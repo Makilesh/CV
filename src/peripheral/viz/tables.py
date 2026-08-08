@@ -31,14 +31,25 @@ def vlm_bench_table(doc: dict) -> str:
 
     out = [
         _row(["model", "quant", "file", "peak VRAM", "load", "TTFT p50", "**TTFT p95**",
-              "tok/s", "fidelity F1", "self-consist."]),
-        _row(["---"] * 10),
+              "tok/s", "fidelity F1", "noise floor", "damage"]),
+        _row(["---"] * 11),
     ]
     for r in rows:
         q = r.get("quality_vs_family_reference") or {}
+        nf = (r.get("noise_floor") or {}).get("self_content_f1")
         is_ref = r["label"] == r.get("family_reference")
         f1 = q.get("content_f1_mean")
+
         f1s = "— *(reference)*" if is_ref else (f"{f1:.3f}" if f1 is not None else "—")
+        # Fidelity below the noise floor is what quantization actually cost; at or above it,
+        # the difference is indistinguishable from the model disagreeing with itself.
+        if is_ref or f1 is None or nf is None:
+            dmg = "—"
+        elif f1 >= nf:
+            dmg = "**none measurable**"
+        else:
+            dmg = f"{nf - f1:.3f}"
+
         p95 = r["ttft_p95_ms"]
         mark = "" if p95 <= TARGET_TTFT_MS else " ❌"
         out.append(_row([
@@ -51,7 +62,8 @@ def vlm_bench_table(doc: dict) -> str:
             f"**{p95:.0f} ms**{mark}",
             f"{r['tokens_per_s']:.0f}",
             f1s,
-            f"{r['self_consistency']:.2f}" if r.get("self_consistency") is not None else "—",
+            f"{nf:.3f}" if nf is not None else "—",
+            dmg,
         ]))
     return "\n".join(out)
 

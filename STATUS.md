@@ -1,6 +1,6 @@
 # STATUS — where Peripheral is, and where it's going
 
-**Last updated:** 2026-08-04 · **Current phase:** 2 COMPLETE, awaiting confirmation · **Branch:** `phase1`
+**Last updated:** 2026-08-08 · **Current phase:** 3 COMPLETE, awaiting confirmation · **Branch:** `phase1`
 
 This file is the single place to look to answer "what is done, what is assumed, what is next."
 Update it at every phase boundary. `PROMPT.md` is the plan; `CLAUDE.md` is the operating manual.
@@ -45,7 +45,7 @@ Everything else is scaffolding for those two plots.
 | **0** | Scaffold, Hydra configs, **telemetry**, bounded-runner contract | `pytest tests/test_phase0.py` passes; 5 s run emits valid metrics JSON | **✅ 62 passed · 30.34 FPS · valid JSON** |
 | 1 | Async pipeline (threads + bounded queues + backpressure) & naive per-frame VLM baseline | capture ≥25 FPS with VLM stage saturated; `results/phase1_naive_baseline.png` | **✅ 77 passed · 30.4 FPS vs 10.2 calls/s · chart built** |
 | 2 | Fast tier: frame diff, small embedding encoder, scene-change + novelty scoring | sustained FPS over 30 s headless, per-stage timings in metrics JSON | **✅ 94 passed · 30.65 FPS live, 211 FPS unpaced · 4.55 ms/frame** |
-| 3 | Slow tier: 3–4 small VLMs × GGUF quant levels, KV reuse, streaming decode | comparison table in `RESULTS.md`; **p95 TTFT < 400 ms** test | not started |
+| 3 | Slow tier: 3–4 small VLMs × GGUF quant levels, KV reuse, streaming decode | comparison table in `RESULTS.md`; **p95 TTFT < 400 ms** test | **✅ 110 passed · 8/8 configs pass · p95 195 ms in-pipeline** |
 | 4 | **The scheduler** — pluggable trigger policies, swept against the oracle | `results/phase4_pareto.png`; ≥85% oracle accuracy at ≤20% oracle calls | not started |
 | 5 | Semantic cache *(droppable)* | hit rate / staleness / accuracy-cost numbers in `RESULTS.md` | not started |
 | 6 | Replay harness + benchmarks + ablations | complete `RESULTS.md`; **no-future-frames test passing** | not started |
@@ -220,6 +220,11 @@ Rejected approaches belong here with their reasons.
 | D15 | **`d_semantic/d_lighting` is never reported alone.** Both ratios always appear together | The mean-centred, L2-normalised control is brightness-invariant *by construction*, so it scores best (19.45) while being a pure motion detector — its `semantic/motion` of 0.42 gives it away. A single-ratio table would have chosen the control. | Reporting the headline ratio only — cleaner table, actively misleading |
 | D16 | ONNX Runtime pinned to **1.26.0 (CUDA 12)**, reusing torch's bundled CUDA 12.8 + cuDNN 9 DLLs | `onnxruntime-gpu` 1.28 is built against CUDA 13, whose Windows runtime has no pip route (NVIDIA's `nvidia-*-cu13` wheels are Linux-only). 1.28 fell back to CPU **silently** — sessions succeed and CPU latencies get reported as GPU ones. | Staying on 1.28 with CPU fallback — current version, invalid numbers |
 | D17 | `OnnxEncoder` **raises** when a requested GPU provider does not bind | See D16: the failure mode is a plausible-looking wrong number, which is the most dangerous kind. `allow_cpu_fallback=True` is required to measure CPU deliberately. | Warning and continuing — one more silently-wrong benchmark |
+| D18 | Slow tier is **Qwen3-VL-4B-Instruct Q8_0** | All 8 configs pass the TTFT target, so quality decides. SmolVLM2-500M hallucinated the setting ("a gymnasium"); SmolVLM2-2.2B is vague. Q4_K_M costs 0.143 F1, well below the 0.992 noise floor, so it is real damage. 6.04 GB + 0.61 GB fast tier = 6.65 of 11.94 GB. | Qwen3-VL-4B Q4_K_M — 1.66 GB cheaper and 25% faster decode, kept as the fallback if VRAM gets tight in Phase 5/7 |
+| D19 | **Every fidelity number is reported next to a per-config noise floor.** `exact_match_rate` is never used as a quality metric | llama-server is not deterministic at temperature 0: same frame, back to back, identical cache state, prompt cache disabled → different string 67% of the time. Measured all three arms at 0.33, so it is kernel FP non-determinism, not cache-state sensitivity. A fidelity score without a noise floor cannot separate quantization damage from serving noise. | Reporting fidelity alone — a cleaner table that would have attributed ~0.2 F1 of pure noise to quantization |
+| D20 | KV-cache reuse is enabled (text-first + `--cache-reuse 256`) but **reported as a 6% win**, and no further in-call optimisation is pursued | Image tokens differ every frame and dominate prefill, so the cacheable prefix is small: 160 → 150 ms p50. Streaming decode is worth far more (3.1×). Together: optimising inside a call is nearly pointless, and the win must come from not making the call. | Chasing prefill optimisation — Phase 4's scheduler is where the order-of-magnitude is |
+| D21 | `vlm_bench` **refuses to start on a GPU that is not idle** | An unrelated process holding ~9.5 GB produced a complete, plausible sweep with every config reporting ~11.8 GB peak VRAM and ~3× inflated TTFT. Peak VRAM is board-wide (that is what the 12 GB limit is), so contention is indistinguishable after the fact and must be caught before the run. | Trusting the operator to check — this already happened once and nothing failed |
+| D22 | The transformers + bitsandbytes reference **reports no latency at all**, and its quality gap is **not attributed to llama.cpp** | PROMPT.md forbids latency claims from that path. And bitsandbytes is 4-bit by construction, so the reference is NF4 while our GGUF is Q8_0 — the comparison varies quantization *and* path together and cannot separate them. | Reporting the 0.717 F1 gap as "llama.cpp quality loss" — a claim the experiment does not support |
 
 ---
 
@@ -379,12 +384,48 @@ the VLM" is Phase 4, and that is where these numbers get their real test.
 
 ---
 
-## 11. Next action
+## 11. Phase 3 results — the target is met with 2× margin
 
-**Phase 2 is complete and awaiting confirmation.** Do not start Phase 3 until it is given.
+`pytest tests/ -q` → **110 passed**, 121 s. Full write-up in `RESULTS.md` §3; figure
+`results/phase3_slow_tier.png`.
 
-Phase 3 is the slow tier: 3–4 small VLMs benchmarked across GGUF quantization levels (peak VRAM,
-TTFT, tokens/sec, load time, answer quality on 20 frames), one transformers + bitsandbytes run as a
-**quality reference only**, then KV-cache reuse and streaming decode with before/after TTFT numbers.
-Target **p95 TTFT under 400 ms** including vision encoding — and note it must be met *including* the
-~15 ms llama-server scheduling floor measured in Phase 1 (D11).
+**All 8 configurations meet p95 TTFT < 400 ms**, the slowest by 2.4×. In the full pipeline the
+chosen config reaches **photon→first-token p95 = 195 ms**.
+
+**Chosen: Qwen3-VL-4B-Instruct Q8_0** — 6.04 GB peak VRAM, 163 ms p95 TTFT, 64 tok/s. See D18.
+
+### The three findings that matter
+
+1. **llama-server is not deterministic at temperature 0** (D19). Same frame, back to back,
+   identical cache state, prompt cache disabled → a different string 67% of the time, in paraphrase
+   form. Every fidelity number now ships next to the configuration's own noise floor, and the
+   *damage* column is the difference. Without it, ~0.2 F1 of pure serving noise would have been
+   reported as quantization damage.
+2. **In-call optimisation is nearly pointless here** (D20). KV-cache reuse is worth 6%
+   (160 → 150 ms) because image tokens change every frame and dominate prefill. Streaming decode is
+   worth 3.1×. The order-of-magnitude has to come from **not making the call** — which is Phase 4.
+3. **Energy is far worse than Phase 1 suggested.** At 43.8 J per answer for a model actually worth
+   deploying, a 30 FPS per-frame oracle would need **1,315 W** against a 95 W cap — **14× outside**
+   the envelope, not the 2× measured with the smallest VLM.
+
+### What this does not show
+
+Quality here is **fidelity, not correctness** — no ground-truth annotations exist until Phase 4.
+Cross-family ranking rests on self-consistency plus qualitative inspection of 20 frames from one
+clip of one scene; the SmolVLM2-500M "gymnasium" hallucination is illustrative, not a metric.
+
+---
+
+## 12. Next action
+
+**Phase 3 is complete and awaiting confirmation.** Do not start Phase 4 until it is given.
+
+Phase 4 is **the core**: pluggable trigger policies behind one interface (`fixed_interval` at
+every-frame/1 Hz/0.5 Hz/0.2 Hz, `motion_threshold`, `embedding_novelty`, `information_gain`, and a
+small `learned` policy), swept across their operating ranges against a per-frame oracle, producing
+`results/phase4_pareto.png` — accuracy vs VLM-calls-per-minute, error bars over repeated runs.
+
+**It needs annotated clips that do not exist yet**, including the lighting-drift and
+rapid-motion-without-semantic-event cases where false triggers are the interesting failure. Those
+must be recorded with **exposure pinned** (§3) or the confound lands inside the very clips meant to
+expose it. That is the first task of Phase 4, and it needs the room set up deliberately.

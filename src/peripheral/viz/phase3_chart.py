@@ -112,6 +112,12 @@ def _panel_vram(ax, rows) -> None:
 
 def _panel_pareto(ax, rows) -> None:
     """Fidelity to the family's highest-precision variant vs the cost of getting it."""
+    # Every family reference sits at exactly 1.0 by definition, so their labels would pile up on
+    # one line. Stagger them downward in TTFT order.
+    refs = sorted([r for r in rows if r["label"] == r.get("family_reference")],
+                  key=lambda z: z["ttft_p95_ms"])
+    ref_rank = {r["label"]: i for i, r in enumerate(refs)}
+
     for r in rows:
         q = r.get("quality_vs_family_reference") or {}
         f1 = q.get("content_f1_mean")
@@ -120,9 +126,10 @@ def _panel_pareto(ax, rows) -> None:
         is_ref = r["label"] == r.get("family_reference")
         ax.scatter(r["ttft_p95_ms"], f1, s=190 if is_ref else 150, color=_color(r),
                    marker="*" if is_ref else "o", edgecolor="white", linewidth=1.5, zorder=3)
+        dy = -(12 + 13 * ref_rank[r["label"]]) if is_ref else 6
         ax.annotate(r["label"], (r["ttft_p95_ms"], f1), textcoords="offset points",
-                    xytext=(9, 5), fontsize=7.5,
-                    bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.7))
+                    xytext=(9, dy), fontsize=7.5,
+                    bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.75))
 
     ax.axvline(TARGET_TTFT_MS, color="#dd6b20", ls="--", lw=2)
     ax.set_xlabel("p95 TTFT (ms)")
