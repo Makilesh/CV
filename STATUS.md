@@ -1,6 +1,6 @@
 # STATUS — where Peripheral is, and where it's going
 
-**Last updated:** 2026-08-08 · **Current phase:** 3 COMPLETE, awaiting confirmation · **Branch:** `phase1`
+**Last updated:** 2026-08-08 · **Current phase:** 4 COMPLETE, awaiting confirmation · **Branch:** `phase1`
 
 This file is the single place to look to answer "what is done, what is assumed, what is next."
 Update it at every phase boundary. `PROMPT.md` is the plan; `CLAUDE.md` is the operating manual.
@@ -46,7 +46,7 @@ Everything else is scaffolding for those two plots.
 | 1 | Async pipeline (threads + bounded queues + backpressure) & naive per-frame VLM baseline | capture ≥25 FPS with VLM stage saturated; `results/phase1_naive_baseline.png` | **✅ 77 passed · 30.4 FPS vs 10.2 calls/s · chart built** |
 | 2 | Fast tier: frame diff, small embedding encoder, scene-change + novelty scoring | sustained FPS over 30 s headless, per-stage timings in metrics JSON | **✅ 94 passed · 30.65 FPS live, 211 FPS unpaced · 4.55 ms/frame** |
 | 3 | Slow tier: 3–4 small VLMs × GGUF quant levels, KV reuse, streaming decode | comparison table in `RESULTS.md`; **p95 TTFT < 400 ms** test | **✅ 110 passed · 8/8 configs pass · p95 195 ms in-pipeline** |
-| 4 | **The scheduler** — pluggable trigger policies, swept against the oracle | `results/phase4_pareto.png`; ≥85% oracle accuracy at ≤20% oracle calls | not started |
+| 4 | **The scheduler** — pluggable trigger policies, swept against the oracle | `results/phase4_pareto.png`; ≥85% oracle accuracy at ≤20% oracle calls | **✅ 134 passed · 100% validity at 0.42% of oracle calls (held-out)** |
 | 5 | Semantic cache *(droppable)* | hit rate / staleness / accuracy-cost numbers in `RESULTS.md` | not started |
 | 6 | Replay harness + benchmarks + ablations | complete `RESULTS.md`; **no-future-frames test passing** | not started |
 | 7 | Ship: GUI demo, CI, README, demo GIF | fresh clone reaches a working live demo | not started |
@@ -225,6 +225,9 @@ Rejected approaches belong here with their reasons.
 | D20 | KV-cache reuse is enabled (text-first + `--cache-reuse 256`) but **reported as a 6% win**, and no further in-call optimisation is pursued | Image tokens differ every frame and dominate prefill, so the cacheable prefix is small: 160 → 150 ms p50. Streaming decode is worth far more (3.1×). Together: optimising inside a call is nearly pointless, and the win must come from not making the call. | Chasing prefill optimisation — Phase 4's scheduler is where the order-of-magnitude is |
 | D21 | `vlm_bench` **refuses to start on a GPU that is not idle** | An unrelated process holding ~9.5 GB produced a complete, plausible sweep with every config reporting ~11.8 GB peak VRAM and ~3× inflated TTFT. Peak VRAM is board-wide (that is what the 12 GB limit is), so contention is indistinguishable after the fact and must be caught before the run. | Trusting the operator to check — this already happened once and nothing failed |
 | D22 | The transformers + bitsandbytes reference **reports no latency at all**, and its quality gap is **not attributed to llama.cpp** | PROMPT.md forbids latency claims from that path. And bitsandbytes is 4-bit by construction, so the reference is NF4 while our GGUF is Q8_0 — the comparison varies quantization *and* path together and cannot separate them. | Reporting the 0.717 F1 gap as "llama.cpp quality loss" — a claim the experiment does not support |
+| D23 | Phase 4's primary metric is **answer validity** (is the held answer about the current scene state), not text agreement with the oracle | Text agreement decays with staleness even when nothing was missed, and its ceiling is 0.783 not 1.0 because the model paraphrases itself. Under it fixed-interval appeared to win — an artifact of frequent calling keeping text fresh. Validity is paraphrase-immune and 1.0 for the oracle by construction. | Content-F1 alone — the obvious choice, and it would have produced a confidently wrong conclusion about which policy is better |
+| D24 | The Phase 4 headline is stated **on held-out clips, with the all-clips reversal reported beside it** — in RESULTS.md, in STATUS.md and in the figure's own subtitle | On held-out, novelty is 4× cheaper than fixed interval; across all six clips, fixed interval is cheaper for perfect validity. A single global threshold does not transfer across scenes. Quoting only the favourable split would be the exact overclaim this project exists to avoid. | Reporting the held-out 4× alone — a stronger-sounding and unsupported claim |
+| D25 | Evaluation clips are **synthesised on real footage**, not staged or hand-annotated | The headline failure mode is a false trigger where *nothing* semantic happened, and certainty about a negative is what hand-annotation cannot give. Compositing yields exact labels by construction. | Hand-annotating real footage — more realistic events, but no way to prove a clip is event-free, which is what the false-trigger metric requires |
 
 ---
 
@@ -416,7 +419,58 @@ clip of one scene; the SmolVLM2-500M "gymnasium" hallucination is illustrative, 
 
 ---
 
-## 12. Next action
+## 12. Phase 4 results — the scheduler works, with a caveat that must travel with it
+
+`pytest tests/ -q` → **134 passed**. Full write-up in `RESULTS.md` §4; figure
+`results/phase4_pareto.png`.
+
+**Exit criterion met on held-out clips: 100% answer validity and 100% event recall at 7.5 calls/min
+= 0.42% of the oracle's budget** (requirement was ≥85% at ≤20%). At a matched 7.5 calls/min, fixed
+interval manages 87.2%; for perfect validity it needs 30 calls/min — **4× more expensive**.
+
+### The four findings
+
+1. **The obvious accuracy metric measures the wrong thing** (D23). Text agreement against the
+   oracle decays with staleness even when no event is missed, and its ceiling is **0.783**, not 1.0,
+   because the model paraphrases itself. Under it, fixed-interval appeared to beat every
+   content-aware policy — an artifact. The primary metric is now **answer validity**: is the answer
+   we hold about the scene the camera is actually in.
+2. **The simple threshold beat the learned policy** (7.5 vs 11.2 calls/min), which `PROMPT.md`
+   explicitly calls the stronger finding. The learned model had **5 positives in 2,876 frames** and
+   its weights lean on `scene_change` and `motion` — it learned to be a motion detector, and fires
+   22 times on the probes against novelty's 13.
+3. **Embedding novelty survives lighting drift**: 2 calls on the gamma-ramp probe versus 12 for
+   fixed interval. The Phase 2 `semantic/motion` result (4.61 vs 0.42) showing up where it matters.
+4. **The advantage does not generalise across all six clips** (D24). For perfect validity,
+   fixed-interval at 2 s (30 calls/min) is *cheaper* than embedding novelty's best all-clip setting
+   (45 calls/min). A single global threshold does not transfer between scenes.
+
+### What this means for the claim
+
+The headline claim ("~90% of oracle at ~10% of invocations") is **exceeded on held-out clips** and
+**not established in general**. The honest statement is: a scene-aware threshold beats a timer *when
+its threshold suits the scene*. Making the threshold adapt per scene is the obvious next step, and
+this sweep is the evidence for why it is needed.
+
+Limitations: two held-out clips, one of which is single-state so validity there is trivially 1.0;
+call counts of 1–12 make false-trigger rates coarse; synthetic events are easier than real ones.
+
+---
+
+## 13. Next action
+
+**Phase 4 is complete and awaiting confirmation.** Do not start Phase 5 until it is given.
+
+Phase 5 is the semantic cache — **explicitly droppable**. Embedding-keyed answer storage with
+staleness tracking plus a rolling scene-state summary answering queries with no VLM call; measure
+hit rate, staleness distribution and the accuracy cost of serving from cache. If the accuracy cost
+exceeds the latency benefit, `PROMPT.md` says to recommend cutting it — and given Phase 4 showed the
+scheduler already reaches 0.42% of oracle calls, the headroom a cache can add is small. That
+recommendation is a live possibility, not a formality.
+
+---
+
+## Superseded
 
 **Phase 3 is complete and awaiting confirmation.** Do not start Phase 4 until it is given.
 
@@ -429,3 +483,4 @@ small `learned` policy), swept across their operating ranges against a per-frame
 rapid-motion-without-semantic-event cases where false triggers are the interesting failure. Those
 must be recorded with **exposure pinned** (§3) or the confound lands inside the very clips meant to
 expose it. That is the first task of Phase 4, and it needs the room set up deliberately.
+

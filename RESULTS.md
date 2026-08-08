@@ -244,6 +244,132 @@ loss.
 
 ---
 
+## 4. The scheduler (Phase 4)
+
+Figure: `results/phase4_pareto.png`. Six 24-second annotated clips (720 frames each), five policy
+families across nine operating points each, replayed against a **true per-frame oracle** — 4,320
+VLM calls, cached so the ~270-run sweep is an exact lookup rather than days of GPU time.
+
+**The sweep measures accuracy and call rate only. It never measures latency** — that was done end
+to end on the real pipeline in §3. Mixing the two would let a cached replay masquerade as a timing
+result.
+
+### The clips, and why they are synthesised
+
+| clip | states | semantic events | purpose |
+|---|---|---|---|
+| `static` | 1 | 0 | control |
+| `object_events` | 4 | 3 | object appears, changes, vanishes |
+| `lighting_drift` | 1 | 0 | **false-trigger probe** — gamma ramps 1.0 → 0.45 → 1.0 |
+| `rapid_motion` | 1 | 0 | **false-trigger probe** — continuous shake and pan |
+| `mixed` | 3 | 2 | drift **with** real events — the discriminating case |
+| `scene_cuts` | 3 | 2 | hard cuts, an upper bound on detectability |
+
+Events are composited onto real camera footage. That is deliberate: the headline failure mode is a
+false trigger where **nothing** semantic happened, and certainty about a negative is exactly what
+hand-annotating real footage cannot provide. The cost is that a pasted object is an *easier* event
+than a subtle real one — Phase 6 adds real annotated data.
+
+### ⚠️ The obvious accuracy metric measures the wrong thing
+
+The natural metric — text agreement between the answer being held and the oracle's answer for the
+current frame — **does not work here**, and finding out why changed the whole analysis.
+
+Because llama-server is not deterministic (§3), the oracle disagrees *with itself*. Measured on
+these clips, agreement between the oracle's answers on two **adjacent frames in the same scene
+state** — where nothing changed and every difference is serving noise — is **0.783**. That is the
+ceiling: a policy calling on every frame but one cannot score higher. And the score keeps decaying
+with staleness (0.783 at 1 frame, 0.635 at 15, 0.583 at 30) *even when no event was missed*.
+
+So text agreement largely measures **staleness, not correctness**, and against a ceiling of 0.783
+rather than 1.0. Under it, fixed-interval appeared to beat every content-aware policy — an artifact
+of frequent calling keeping text fresh, not of better decisions.
+
+**The primary metric is therefore answer validity**: the fraction of frames on which the answer
+being held describes the scene state the camera is actually in. It is immune to paraphrase, and
+1.0 for the oracle by construction. Text agreement is still reported, as a secondary number
+against its measured ceiling.
+
+### Exit criterion — met, on held-out clips
+
+Held out from learned-policy training and from tuning: `lighting_drift` and `mixed` (one probe, one
+event clip, so both failure directions are represented).
+
+| policy | operating point | validity | event recall | calls/min | % of oracle |
+|---|---|---|---|---|---|
+| **embedding_novelty** | 0.12 | **1.000** | **1.00** | **7.5** | **0.42%** |
+| motion_threshold | 0.015 | 1.000 | 1.00 | 10.0 | 0.56% |
+| learned | 0.95 | 1.000 | 1.00 | 11.2 | 0.62% |
+| fixed_interval | 2 s | 1.000 | 1.00 | 30.0 | 1.67% |
+| fixed_interval | 10 s | 0.872 | 1.00 | 7.5 | 0.42% |
+
+**Requirement: ≥85% of oracle accuracy at ≤20% of oracle calls. Achieved: 100% answer validity and
+100% event recall at 0.42% of oracle calls.**
+
+At a *matched* budget of 7.5 calls/min, embedding novelty holds a valid answer on **100%** of frames
+where fixed interval manages **87.2%**. For perfect validity, fixed interval needs 30 calls/min
+against novelty's 7.5 — **4× more expensive for the same result**.
+
+### The simple threshold beats the learned policy
+
+`PROMPT.md` asks for this to be said plainly if it happens, and it happened: **embedding novelty
+(7.5 calls/min) beats the learned policy (11.2) and the motion threshold (10.0)** for identical
+validity and recall.
+
+The learned policy had almost nothing to learn from — **5 positive examples in 2,876 frames**,
+because semantic events are rare by construction. Its fitted weights lean hardest on `scene_change`
+(251) and `motion` (98), i.e. **it learned to be a motion detector**, which is exactly why it fires
+22 times on the probe clips where nothing happens, against novelty's 13.
+
+A one-parameter threshold on a good embedding beat a learned model, on this data. More training
+clips with more events might change that; on what exists, the simple thing won.
+
+### False triggers where nothing happens
+
+On `lighting_drift` — a full gamma ramp down and back, zero semantic change, so **every call after
+the first is wasted by construction**:
+
+| policy | calls on the probe |
+|---|---|
+| **embedding_novelty** | **2** |
+| motion_threshold | 3 |
+| learned | 4 |
+| fixed_interval (2 s) | 12 |
+
+The embedding survives a lighting change that a motion detector cannot, which is the Phase 2
+`semantic/motion` result (4.61 vs 0.42) showing up where it matters.
+
+### ❗ What does not generalise — read this before quoting the 4×
+
+**Across all six clips the advantage disappears.** For perfect validity, fixed interval at 2 s
+(30 calls/min) is *cheaper* than embedding novelty at its best all-clip setting (45 calls/min). At
+the 85% bar, embedding novelty is cheapest (5.8 calls/min) but its event recall collapses to 0.67 —
+it misses a third of the events.
+
+The reason is structural: **a single global threshold does not transfer across scenes.** The value
+that is perfect on the held-out pair misses subtler events elsewhere; the value that catches
+everything elsewhere wastes calls on drift. The exit criterion is defined on held-out clips and is
+met there by a wide margin, but the honest summary is:
+
+> A scene-aware threshold beats a timer **when its threshold suits the scene**. Making that
+> threshold adapt per scene — rather than being tuned once — is the obvious next step, and this
+> sweep is the evidence for why it is needed.
+
+`information_gain` underperformed throughout (validity 0.83, recall 0.50–0.67): the staleness
+discount made it too conservative, suppressing calls after a change had already been partly paid
+for. It is reported as measured rather than tuned until it looked better.
+
+### Limitations
+
+- **Two held-out clips.** `lighting_drift` has a single scene state, so validity there is trivially
+  1.0 for any policy that calls at least once — the discriminating clip is `mixed`. The held-out
+  numbers rest on a narrow base and the error bars are correspondingly coarse.
+- **Call counts are small** (1–12 per probe clip), so false-trigger rates are coarse fractions.
+- **Synthetic events are easy.** Passing here does not demonstrate passing on subtle real events.
+- Policies were swept, not tuned per clip; no policy saw its held-out clips during fitting.
+
+---
+
 ## Reproducing
 
 ```bash
