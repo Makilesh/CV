@@ -11,6 +11,7 @@ defaults:
   - kv_reuse: default
   - hf_reference: default
   - phase4: default
+  - phase5: default
   - _self_
 
 seed: 1337
