@@ -167,13 +167,20 @@ def test_non_strict_timeline_records_violations_instead_of_raising():
 
 
 def test_queries_become_due_in_order_and_only_once():
-    tl = QueryTimeline(queries=uniform_queries(6.0, 2.0, "q"))
+    tl = QueryTimeline(queries=uniform_queries(7.0, 2.0, "q"))
     assert [q.t for q in tl.queries] == [2.0, 4.0, 6.0]
     assert len(tl.due(1.0)) == 0
     assert len(tl.due(2.0)) == 1
     tl.answer(tl.due(2.0)[0], "a", 1, 1.0, 2.0)
     assert len(tl.due(2.0)) == 0, "an answered query must not come due again"
     assert len(tl.due(5.0)) == 1
+
+
+def test_no_query_is_scheduled_at_or_past_the_clip_end():
+    """The last frame of an N-frame clip is due before `duration`, so a query at exactly `duration`
+    could never come due and would be miscounted as an unanswered failure."""
+    assert uniform_queries(6.0, 2.0, "q")[-1].t == 4.0
+    assert all(q.t < 6.0 for q in uniform_queries(6.0, 2.0, "q"))
 
 
 # --------------------------------------------------------------------------------------------

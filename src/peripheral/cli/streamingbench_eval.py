@@ -40,12 +40,31 @@ def _progress(line: str) -> None:
         pass
 
 
+VIDEO_SUFFIXES = {".mp4", ".mkv", ".webm", ".avi"}
+
+
 def _find_video(root: Path, sample: int) -> Path | None:
-    for pat in (f"*sample_{sample}.*", f"*sample_{sample}_*", f"*_{sample}.mp4", f"{sample}.mp4"):
-        hits = [p for p in root.rglob(pat) if p.suffix.lower() in {".mp4", ".mkv", ".webm", ".avi"}]
-        if hits:
-            return sorted(hits)[0]
-    return None
+    """Locate `sample_N`'s video.
+
+    The archive is Mac-zipped, so it carries a `__MACOSX` tree of `._video.mp4` resource-fork stubs
+    that are a few hundred bytes and not decodable. They sort *before* the real files, so a naive
+    glob picks them every time and every clip appears to fail to open. Excluded explicitly, and a
+    size floor guards against any other stub.
+    """
+    exact = root / f"sample_{sample}"
+    candidates: list[Path] = []
+    if exact.is_dir():
+        candidates = [p for p in exact.iterdir() if p.suffix.lower() in VIDEO_SUFFIXES]
+    if not candidates:
+        candidates = [
+            p for p in root.rglob(f"sample_{sample}/*")
+            if p.suffix.lower() in VIDEO_SUFFIXES
+        ]
+    candidates = [
+        p for p in candidates
+        if "__MACOSX" not in p.parts and not p.name.startswith("._") and p.stat().st_size > 100_000
+    ]
+    return sorted(candidates, key=lambda p: -p.stat().st_size)[0] if candidates else None
 
 
 class StreamingBenchRunner(BoundedRunner):
