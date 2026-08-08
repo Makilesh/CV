@@ -5,7 +5,7 @@
 #
 # Same model family as the chosen GGUF config, so the comparison isolates "GGUF + llama.cpp"
 # from "safetensors + transformers + bnb NF4" rather than mixing in a different model.
-model_id: Qwen/Qwen3-VL-2B-Instruct
+model_id: Qwen/Qwen3-VL-4B-Instruct
 quant_type: nf4
 double_quant: true
 
@@ -15,4 +15,4 @@ frame_stride: 90
 max_tokens: 48
 prompt: "Describe what you see in one short sentence."
 
-compare_to: results/phase3_vlm_bench.json
+compare_gguf: true   # also run the chosen GGUF config on the same frames and score both paths

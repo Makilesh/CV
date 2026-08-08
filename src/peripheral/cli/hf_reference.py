@@ -30,6 +30,21 @@ from ..vlm.quality import score_against_reference
 from ._args import parse_and_load
 
 
+def _progress(line: str) -> None:
+    """Print progress without ever being able to kill the run.
+
+    Learned on 2026-08-08: piping this runner's stderr into `Select-Object -First 8` closed the
+    pipe, and the next `print` raised OSError(22), which took down a 20-frame run at frame 9.
+    A benchmark must not die because someone truncated its console output — and an encoding
+    failure on a model-generated character must not either.
+    """
+    try:
+        sys.stderr.write(line.encode("ascii", "replace").decode("ascii") + "\n")
+        sys.stderr.flush()
+    except Exception:  # noqa: BLE001 - progress output is never worth a failed run
+        pass
+
+
 class HfReferenceRunner(BoundedRunner):
     name = "phase3_hf_reference"
 
@@ -105,7 +120,7 @@ class HfReferenceRunner(BoundedRunner):
             out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True
         ).strip()
         self.answers.append(text)
-        print(f"  [{self._i}/{len(self.frames)}] {text[:90]}", file=sys.stderr)
+        _progress(f"  [{self._i}/{len(self.frames)}] {text[:90]}")
         return True
 
     def teardown(self) -> None:
@@ -125,21 +140,62 @@ class HfReferenceRunner(BoundedRunner):
             ),
         }
 
-        # If the GGUF sweep has already run, score the chosen config against this reference.
-        bench_path = Path(str(h.compare_to)) if h.compare_to else None
-        if bench_path and bench_path.exists():
+        # The comparison this run exists for: same weights, same frames, same prompt, served two
+        # different ways. Anything the GGUF path loses relative to this shows up here.
+        if bool(h.get("compare_gguf", True)):
             try:
-                doc = json.loads(bench_path.read_text(encoding="utf-8"))
-                rows = doc["extra"]["vlm_bench"]["configs"]
-                payload["note"] = (
-                    "Cross-path comparison is indicative only: the GGUF sweep discards per-frame "
-                    "answers after scoring, so agreement is recomputed only where available."
-                )
-                payload["available_configs"] = [r["label"] for r in rows if "error" not in r]
-            except Exception as exc:  # noqa: BLE001
+                payload["vs_gguf"] = self._compare_to_gguf()
+            except Exception as exc:  # noqa: BLE001 - the reference answers are the deliverable
                 payload["compare_error"] = f"{type(exc).__name__}: {exc}"
 
         self.recorder.record_extra("hf_reference", payload)
+
+    def _compare_to_gguf(self) -> dict[str, Any]:
+        """Ask the chosen GGUF config the same 20 frames and score both ways.
+
+        Two passes over the GGUF path so its own noise floor is measured on the same frames —
+        without it, a cross-path agreement number cannot be told apart from serving noise
+        (llama-server is not deterministic at temperature 0; see peripheral.vlm.quality).
+        """
+        from ..vlm.llama_server import LlamaServerClient
+        from ..vlm.quality import noise_floor
+
+        v = self.cfg.vlm
+        client = LlamaServerClient(
+            binary=v.binary, model=v.model, mmproj=v.mmproj, host=v.host, port=int(v.port),
+            n_gpu_layers=int(v.n_gpu_layers), ctx_size=int(v.ctx_size),
+            jpeg_quality=int(v.jpeg_quality), autostart=True,
+            startup_timeout_s=float(v.startup_timeout_s),
+            extra_args=list(v.get("extra_args", []) or []), model_name=v.name,
+        )
+        client.start()
+        try:
+            prompt = str(self.cfg.hf_reference.prompt)
+            mt = int(self.cfg.hf_reference.max_tokens)
+            first = [client.describe(f, prompt, max_tokens=mt).text for f in self.frames]
+            second = [client.describe(f, prompt, max_tokens=mt).text for f in self.frames]
+        finally:
+            client.stop()
+
+        agreement = score_against_reference(first, self.answers)
+        floor = noise_floor(first, second)
+        f1, nf = agreement["content_f1_mean"], floor["self_content_f1"]
+        return {
+            "gguf_config": str(v.name),
+            "agreement_with_hf_reference": agreement,
+            "gguf_noise_floor": floor,
+            "verdict": (
+                "GGUF agreement with the transformers reference is at or above the GGUF path's "
+                "own noise floor — no quality loss attributable to llama.cpp is measurable here."
+                if (f1 is not None and nf is not None and f1 >= nf)
+                else "GGUF agreement sits below its own noise floor; the gap is a real cross-path "
+                     "difference, not serving noise."
+            ),
+            "sample_pairs": [
+                {"hf": self.answers[i][:160], "gguf": first[i][:160]}
+                for i in range(min(3, len(first)))
+            ],
+        }
 
 
 def main(argv: list[str] | None = None) -> int:

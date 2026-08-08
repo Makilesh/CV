@@ -6,6 +6,12 @@
 #
 # Excluded as too large for 12 GB alongside a fast tier and a display: Pixtral 12B,
 # Mistral Small 3.1 24B, Llama 4 Scout, Qwen3-VL-32B.
+# Refuse to start if another process already holds more than this much VRAM. Peak VRAM is measured
+# board-wide (that is what the 12 GB limit is), so a foreign allocation is indistinguishable from
+# ours after the fact, and memory pressure silently inflates TTFT. Caught 2026-08-08 when an
+# unrelated process held ~9.5 GB and the entire sweep completed with wrong-but-plausible numbers.
+max_foreign_vram_gb: 1.5
+
 clip: data/clips/desk_60s.mp4
 n_frames: 20        # PROMPT.md asks for answer quality on 20 frames
 frame_stride: 90    # ~3 s apart at 30 FPS, so the set spans the whole clip

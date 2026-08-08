@@ -29,7 +29,7 @@ from ..capture import FileSource
 from ..runtime import BoundedRunner
 from ..telemetry.clock import now
 from ..vlm.llama_server import LlamaServerClient
-from ..vlm.quality import score_against_reference, self_consistency
+from ..vlm.quality import noise_floor, score_against_reference, self_consistency
 from ._args import parse_and_load
 
 
@@ -38,6 +38,7 @@ class VlmBenchRunner(BoundedRunner):
 
     def setup(self) -> None:
         b = self.cfg.vlm_bench
+        _require_idle_gpu(self.power, float(b.get("max_foreign_vram_gb", 1.5)))
         clip = Path(b.clip)
         if not clip.exists():
             raise FileNotFoundError(f"benchmark clip not found: {clip}")
@@ -137,11 +138,12 @@ class VlmBenchRunner(BoundedRunner):
                 answers.append(r.text)
                 peak_vram = max(peak_vram, _vram_used_gb(self.power))
 
-            # Determinism check at temperature 0. If this is below 1.0, every quality number in
-            # the table is noisier than it looks.
+            # Second full pass over the SAME frames. This is not redundancy — it establishes this
+            # configuration's noise floor, without which the fidelity column cannot be read (see
+            # peripheral.vlm.quality.noise_floor).
             repeat = [
                 client.describe(img, self.prompt, max_tokens=self.max_tokens).text
-                for img in self.frames[: min(6, len(self.frames))]
+                for img in self.frames
             ]
         finally:
             client.stop()
@@ -166,6 +168,7 @@ class VlmBenchRunner(BoundedRunner):
             "n_frames": len(self.frames),
             "answers": answers,
             "self_consistency": self_consistency(answers[: len(repeat)], repeat),
+            "noise_floor": noise_floor(answers[: len(repeat)], repeat),
             "sample_answer": answers[0][:200] if answers else "",
         }
 
@@ -214,6 +217,48 @@ def _vram_used_gb(sampler: Any) -> float:
     """Board-wide NVML VRAM. Board-wide is what the 12 GB limit actually is."""
     s = sampler._read() if getattr(sampler, "available", False) else None
     return (s.mem_used_b / 1024**3) if s else 0.0
+
+
+def _require_idle_gpu(sampler: Any, max_foreign_gb: float) -> None:
+    """Refuse to benchmark on a GPU somebody else is already using.
+
+    Learned the hard way on 2026-08-08: an unrelated process was holding ~9.5 GB, and the whole
+    sweep completed successfully with plausible-looking numbers that were entirely wrong — peak
+    VRAM read ~11.8 GB for every configuration including a 500M model that actually needs 1.5 GB,
+    and TTFT was ~3x its true value from memory pressure. Nothing failed; the results were just
+    silently invalid, which is the most dangerous kind of wrong.
+
+    VRAM here is board-wide because that is what the 12 GB limit actually is, so contention is
+    indistinguishable from our own usage after the fact. It has to be caught before the run.
+    """
+    if not getattr(sampler, "available", False):
+        return
+    used = _vram_used_gb(sampler)
+    if used <= max_foreign_gb:
+        return
+
+    detail = ""
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["nvidia-smi", "--query-compute-apps=pid,process_name", "--format=csv,noheader"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if out.stdout.strip():
+            detail = "\nProcesses currently on the GPU:\n  " + "\n  ".join(
+                out.stdout.strip().splitlines()
+            )
+    except Exception:  # noqa: BLE001 - diagnostics are best-effort
+        pass
+
+    raise RuntimeError(
+        f"GPU already has {used:.2f} GB in use (limit for a clean run: {max_foreign_gb:.2f} GB). "
+        "Benchmarking against a contended GPU produces plausible numbers that are wrong: peak "
+        "VRAM is board-wide so it absorbs the other process, and memory pressure inflates TTFT. "
+        "Free the GPU and re-run, or raise vlm_bench.max_foreign_vram_gb to override deliberately."
+        + detail
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -4,7 +4,7 @@ defaults:
   - telemetry: default
   - scheduler: none
   - pipeline: default
-  - vlm: smolvlm2_500m
+  - vlm: qwen3vl_4b_q8
   - fasttier: default
   - encoder_bench: default
   - vlm_bench: default
