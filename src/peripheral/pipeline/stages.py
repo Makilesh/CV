@@ -84,10 +84,15 @@ class CaptureStage(Stage):
 
 
 class FastTierStage(Stage):
-    """Phase 1: pass-through. Phase 2: frame differencing, embedding, novelty and scene-change.
+    """Motion, embedding, novelty and scene-change scoring — on every frame, inside ~10 ms.
 
-    It still records its own timing so the Phase 2 budget has a Phase 1 baseline to beat, and so
-    the per-stage millisecond breakdown exists from the first measured run.
+    With `fast_tier=None` this is the Phase 1 pass-through, retained so the naive baseline can be
+    re-measured unchanged. With a `FastTier` attached it produces the signals the Phase 4 scheduler
+    decides on.
+
+    Timing is recorded broken out (`fast_tier_motion`, `fast_tier_encode`, `fast_tier_score`) as
+    well as in total, because the per-stage millisecond budget is a Phase 2 deliverable and
+    "the fast tier costs 3 ms" is not actionable without knowing which part.
     """
 
     def __init__(
@@ -96,18 +101,32 @@ class FastTierStage(Stage):
         out_q: BoundedQueue,
         recorder: MetricsRecorder,
         stop_event: threading.Event,
+        fast_tier: Any | None = None,
+        keep_scores: bool = True,
     ) -> None:
         super().__init__("fast_tier", recorder, stop_event)
         self.in_q = in_q
         self.out_q = out_q
+        self.fast_tier = fast_tier
+        self.keep_scores = keep_scores
+        self.scores: list[tuple[int, float, float, float, float]] = []
 
     def tick(self) -> None:
         frame = self.in_q.get(timeout=0.1)
         if frame is None:
             return
+
         with Stopwatch() as sw:
-            pass  # Phase 2 fills this in
+            scores = self.fast_tier.process(frame) if self.fast_tier is not None else None
         self.recorder.record_stage("fast_tier", sw.ms, frame.frame_id)
+
+        if scores is not None:
+            frame.scores = scores
+            if self.keep_scores:
+                self.scores.append(
+                    (frame.frame_id, frame.t_capture, scores.motion, scores.novelty,
+                     scores.scene_change)
+                )
         self.out_q.put(frame, frame_id=frame.frame_id)
         self.n_processed += 1
 

@@ -1,6 +1,6 @@
 # STATUS — where Peripheral is, and where it's going
 
-**Last updated:** 2026-08-04 · **Current phase:** 1 COMPLETE, awaiting confirmation · **Branch:** `phase1`
+**Last updated:** 2026-08-08 · **Current phase:** 4 COMPLETE, awaiting confirmation · **Branch:** `phase1`
 
 This file is the single place to look to answer "what is done, what is assumed, what is next."
 Update it at every phase boundary. `PROMPT.md` is the plan; `CLAUDE.md` is the operating manual.
@@ -44,9 +44,9 @@ Everything else is scaffolding for those two plots.
 |---|---|---|---|
 | **0** | Scaffold, Hydra configs, **telemetry**, bounded-runner contract | `pytest tests/test_phase0.py` passes; 5 s run emits valid metrics JSON | **✅ 62 passed · 30.34 FPS · valid JSON** |
 | 1 | Async pipeline (threads + bounded queues + backpressure) & naive per-frame VLM baseline | capture ≥25 FPS with VLM stage saturated; `results/phase1_naive_baseline.png` | **✅ 77 passed · 30.4 FPS vs 10.2 calls/s · chart built** |
-| 2 | Fast tier: frame diff, small embedding encoder, scene-change + novelty scoring | sustained FPS over 30 s headless, per-stage timings in metrics JSON | not started |
-| 3 | Slow tier: 3–4 small VLMs × GGUF quant levels, KV reuse, streaming decode | comparison table in `RESULTS.md`; **p95 TTFT < 400 ms** test | not started |
-| 4 | **The scheduler** — pluggable trigger policies, swept against the oracle | `results/phase4_pareto.png`; ≥85% oracle accuracy at ≤20% oracle calls | not started |
+| 2 | Fast tier: frame diff, small embedding encoder, scene-change + novelty scoring | sustained FPS over 30 s headless, per-stage timings in metrics JSON | **✅ 94 passed · 30.65 FPS live, 211 FPS unpaced · 4.55 ms/frame** |
+| 3 | Slow tier: 3–4 small VLMs × GGUF quant levels, KV reuse, streaming decode | comparison table in `RESULTS.md`; **p95 TTFT < 400 ms** test | **✅ 110 passed · 8/8 configs pass · p95 195 ms in-pipeline** |
+| 4 | **The scheduler** — pluggable trigger policies, swept against the oracle | `results/phase4_pareto.png`; ≥85% oracle accuracy at ≤20% oracle calls | **✅ 134 passed · 100% validity at 0.42% of oracle calls (held-out)** |
 | 5 | Semantic cache *(droppable)* | hit rate / staleness / accuracy-cost numbers in `RESULTS.md` | not started |
 | 6 | Replay harness + benchmarks + ablations | complete `RESULTS.md`; **no-future-frames test passing** | not started |
 | 7 | Ship: GUI demo, CI, README, demo GIF | fresh clone reaches a working live demo | not started |
@@ -215,6 +215,19 @@ Rejected approaches belong here with their reasons.
 | D10 | Queue sizes stay small (capture 4, VLM 2, answer 8) | A deep queue buys no throughput when the consumer is 3× slower; it only converts *dropped frames* into *stale answers*, moving the damage from a visible metric into an invisible one | Deep queues — smoother-looking drop rate, worse and less honest staleness |
 | D11 | **Rejected HTTP connection pooling.** Client keeps plain `urllib`, one connection per call | Measured: pooling fixes a bare `GET /health` (15.08 → 0.46 ms p50) but does **nothing** for completions (15.14 ms fresh vs 15.58 ms pooled). The ~15 ms floor is llama-server's task scheduling, not transport, so pooling adds a moving part for no measured gain | `requests.Session` — better practice in the abstract, zero measured benefit here |
 | D12 | Phase 1 baseline uses the **smallest credible** VLM (SmolVLM2-500M), not a representative one | Phase 1 must show per-frame inference cannot keep up. A large model makes that trivially true and easy to dismiss with "use a smaller model". If even the smallest cannot, nothing can. | A 2B–4B model — more representative of final quality, weaker as an argument. Phase 3 does the real sweep |
+| D13 | Fast-tier encoder is **MobileNetV3-small via ONNX Runtime CUDA** | Cheapest candidate *and* best on the metric that matters (`semantic/motion` 4.61). 3.32 ms vs DINOv2's 4.20 ms and CLIP's 4.23 ms. The simple thing won outright. | DINOv2-ViT-S/14 — better `semantic/lighting` (15.84 vs 12.48) but 1.5× worse at separating events from movement, and 27% slower |
+| D14 | Encoder quality is scored as **lighting vs motion vs semantic embedding displacement**, not ImageNet accuracy or retrieval mAP | A generic benchmark says nothing about our failure mode. Phase 4's headline risk is a false trigger on lighting drift, so the encoder is scored on exactly that discrimination. | Standard embedding benchmarks — comparable to published numbers, irrelevant to the decision being made |
+| D15 | **`d_semantic/d_lighting` is never reported alone.** Both ratios always appear together | The mean-centred, L2-normalised control is brightness-invariant *by construction*, so it scores best (19.45) while being a pure motion detector — its `semantic/motion` of 0.42 gives it away. A single-ratio table would have chosen the control. | Reporting the headline ratio only — cleaner table, actively misleading |
+| D16 | ONNX Runtime pinned to **1.26.0 (CUDA 12)**, reusing torch's bundled CUDA 12.8 + cuDNN 9 DLLs | `onnxruntime-gpu` 1.28 is built against CUDA 13, whose Windows runtime has no pip route (NVIDIA's `nvidia-*-cu13` wheels are Linux-only). 1.28 fell back to CPU **silently** — sessions succeed and CPU latencies get reported as GPU ones. | Staying on 1.28 with CPU fallback — current version, invalid numbers |
+| D17 | `OnnxEncoder` **raises** when a requested GPU provider does not bind | See D16: the failure mode is a plausible-looking wrong number, which is the most dangerous kind. `allow_cpu_fallback=True` is required to measure CPU deliberately. | Warning and continuing — one more silently-wrong benchmark |
+| D18 | Slow tier is **Qwen3-VL-4B-Instruct Q8_0** | All 8 configs pass the TTFT target, so quality decides. SmolVLM2-500M hallucinated the setting ("a gymnasium"); SmolVLM2-2.2B is vague. Q4_K_M costs 0.143 F1, well below the 0.992 noise floor, so it is real damage. 6.04 GB + 0.61 GB fast tier = 6.65 of 11.94 GB. | Qwen3-VL-4B Q4_K_M — 1.66 GB cheaper and 25% faster decode, kept as the fallback if VRAM gets tight in Phase 5/7 |
+| D19 | **Every fidelity number is reported next to a per-config noise floor.** `exact_match_rate` is never used as a quality metric | llama-server is not deterministic at temperature 0: same frame, back to back, identical cache state, prompt cache disabled → different string 67% of the time. Measured all three arms at 0.33, so it is kernel FP non-determinism, not cache-state sensitivity. A fidelity score without a noise floor cannot separate quantization damage from serving noise. | Reporting fidelity alone — a cleaner table that would have attributed ~0.2 F1 of pure noise to quantization |
+| D20 | KV-cache reuse is enabled (text-first + `--cache-reuse 256`) but **reported as a 6% win**, and no further in-call optimisation is pursued | Image tokens differ every frame and dominate prefill, so the cacheable prefix is small: 160 → 150 ms p50. Streaming decode is worth far more (3.1×). Together: optimising inside a call is nearly pointless, and the win must come from not making the call. | Chasing prefill optimisation — Phase 4's scheduler is where the order-of-magnitude is |
+| D21 | `vlm_bench` **refuses to start on a GPU that is not idle** | An unrelated process holding ~9.5 GB produced a complete, plausible sweep with every config reporting ~11.8 GB peak VRAM and ~3× inflated TTFT. Peak VRAM is board-wide (that is what the 12 GB limit is), so contention is indistinguishable after the fact and must be caught before the run. | Trusting the operator to check — this already happened once and nothing failed |
+| D22 | The transformers + bitsandbytes reference **reports no latency at all**, and its quality gap is **not attributed to llama.cpp** | PROMPT.md forbids latency claims from that path. And bitsandbytes is 4-bit by construction, so the reference is NF4 while our GGUF is Q8_0 — the comparison varies quantization *and* path together and cannot separate them. | Reporting the 0.717 F1 gap as "llama.cpp quality loss" — a claim the experiment does not support |
+| D23 | Phase 4's primary metric is **answer validity** (is the held answer about the current scene state), not text agreement with the oracle | Text agreement decays with staleness even when nothing was missed, and its ceiling is 0.783 not 1.0 because the model paraphrases itself. Under it fixed-interval appeared to win — an artifact of frequent calling keeping text fresh. Validity is paraphrase-immune and 1.0 for the oracle by construction. | Content-F1 alone — the obvious choice, and it would have produced a confidently wrong conclusion about which policy is better |
+| D24 | The Phase 4 headline is stated **on held-out clips, with the all-clips reversal reported beside it** — in RESULTS.md, in STATUS.md and in the figure's own subtitle | On held-out, novelty is 4× cheaper than fixed interval; across all six clips, fixed interval is cheaper for perfect validity. A single global threshold does not transfer across scenes. Quoting only the favourable split would be the exact overclaim this project exists to avoid. | Reporting the held-out 4× alone — a stronger-sounding and unsupported claim |
+| D25 | Evaluation clips are **synthesised on real footage**, not staged or hand-annotated | The headline failure mode is a false trigger where *nothing* semantic happened, and certainty about a negative is what hand-annotation cannot give. Compositing yields exact labels by construction. | Hand-annotating real footage — more realistic events, but no way to prove a clip is event-free, which is what the false-trigger metric requires |
 
 ---
 
@@ -312,12 +325,162 @@ independent metric once the cache (Phase 5) starts serving answers from older ev
 
 ---
 
-## 10. Next action
+## 10. Phase 2 results — the fast tier fits, with 7× room
 
-**Phase 1 is complete and awaiting confirmation.** Do not start Phase 2 until it is given.
+`pytest tests/ -q` → **94 passed**, 83 s. Chart: `results/phase2_fast_tier.png`.
 
-Phase 2 is the fast tier: frame differencing, a small embedding encoder (benchmark 2–3 of
-DINOv2-small / small CLIP / MobileNet), scene-change scoring and novelty against a rolling
-reference — sustaining 30 FPS with the VLM disabled, ONNX Runtime measured against raw PyTorch.
-Per finding 2 above it has a ~10 ms budget per frame, and per Q1 in §7 the exit criterion should be
-read as ≥29.5 FPS live plus ≥30 FPS on a file source.
+### Encoder sweep (`results/phase2_encoder_bench.json`)
+
+7 candidates × latency-including-preprocessing × discrimination quality:
+
+| encoder | p50 ms | p95 ms | dim | sem/light | **sem/motion** |
+|---|---|---|---|---|---|
+| downsample32 *(control, no network)* | **0.16** | 0.17 | 1024 | **19.45** | **0.42** ⚠️ |
+| mobilenetv3_small torch fp16 | 5.62 | 6.17 | 1024 | 12.45 | 4.59 |
+| **mobilenetv3_small onnx** ← chosen | **3.32** | 4.08 | 1024 | 12.48 | **4.61** |
+| dinov2_vits14 torch fp16 | 5.21 | 5.56 | 384 | 15.81 | 2.99 |
+| dinov2_vits14 onnx | 4.20 | 4.52 | 384 | 15.84 | 2.99 |
+| clip_vitb32 torch fp16 | 4.72 | 5.88 | 768 | 4.46 | 2.77 |
+| clip_vitb32 onnx | 4.23 | 5.44 | 768 | 4.47 | 2.77 |
+
+**Read both ratios or you pick the wrong encoder.** The control tops `semantic/lighting` at 19.45 —
+purely because mean-centring and L2-normalising a grayscale thumbnail makes it brightness-invariant
+by construction. Its `semantic/motion` of **0.42** exposes what it actually is: it moves *more* when
+something merely moves than when the scene genuinely changes. That is the motion detector Phase 4
+has to beat, and a single-ratio table would have selected it.
+
+**ONNX Runtime beat PyTorch on every candidate** — 1.69× on MobileNet, 1.24× DINOv2, 1.12× CLIP —
+with quality identical to 3 decimal places, as it should be for the same graph. `PROMPT.md`'s
+preference for ORT is now measured rather than assumed.
+
+**The cheapest learned encoder won outright.** MobileNetV3-small is both the fastest network and the
+best at separating events from movement. No quality-for-speed trade had to be made.
+
+### Sustained run (`results/phase2_fasttier_webcam.json`, 30 s live)
+
+| | |
+|---|---|
+| **achieved FPS** | **30.65**, 0 frames dropped |
+| fast_tier p50 / p95 / p99 | **4.55 / 6.99 / 8.63 ms** (budget ~10 ms) |
+| **unpaced throughput** | **211 FPS — 7.0× the 30 FPS requirement** |
+| mean GPU power | **8.17 W** vs Phase 1's 65.6 W — **8× cheaper** |
+| peak VRAM | 0.61 GB |
+| novelty p50 / p95 / max | 0.019 / 0.100 / 0.187 |
+| motion p50 / p95 / max | 0.0012 / 0.0031 / 0.0087 |
+
+Both readings of the exit criterion hold: **30.65 FPS live** (≥29.5, the camera's ceiling) and
+**211 FPS unpaced** (≥30). Per-stage timings are in the metrics JSON as required.
+
+The 8× power gap is the quantitative case for the whole architecture: the fast tier can watch every
+frame for 8.2 W, while answering every frame costs 65.6 W and still cannot keep up.
+
+### What this does not yet show
+
+The quality numbers come from **24 frames of one desk clip** with a **synthetic** semantic event
+(an opaque textured block over ~12% of the frame). It is a deliberately easy event — an encoder
+that fails it certainly fails a subtle one, but passing it does not prove the reverse. Phase 4 needs
+real annotated clips with genuine semantic events, and the lighting-drift clips must be recorded
+with exposure pinned (§3) or the confound lands inside the very clips meant to expose false triggers.
+
+No threshold has been chosen yet. Phase 2 produces the *signals*; deciding when they mean "invoke
+the VLM" is Phase 4, and that is where these numbers get their real test.
+
+---
+
+## 11. Phase 3 results — the target is met with 2× margin
+
+`pytest tests/ -q` → **110 passed**, 121 s. Full write-up in `RESULTS.md` §3; figure
+`results/phase3_slow_tier.png`.
+
+**All 8 configurations meet p95 TTFT < 400 ms**, the slowest by 2.4×. In the full pipeline the
+chosen config reaches **photon→first-token p95 = 195 ms**.
+
+**Chosen: Qwen3-VL-4B-Instruct Q8_0** — 6.04 GB peak VRAM, 163 ms p95 TTFT, 64 tok/s. See D18.
+
+### The three findings that matter
+
+1. **llama-server is not deterministic at temperature 0** (D19). Same frame, back to back,
+   identical cache state, prompt cache disabled → a different string 67% of the time, in paraphrase
+   form. Every fidelity number now ships next to the configuration's own noise floor, and the
+   *damage* column is the difference. Without it, ~0.2 F1 of pure serving noise would have been
+   reported as quantization damage.
+2. **In-call optimisation is nearly pointless here** (D20). KV-cache reuse is worth 6%
+   (160 → 150 ms) because image tokens change every frame and dominate prefill. Streaming decode is
+   worth 3.1×. The order-of-magnitude has to come from **not making the call** — which is Phase 4.
+3. **Energy is far worse than Phase 1 suggested.** At 43.8 J per answer for a model actually worth
+   deploying, a 30 FPS per-frame oracle would need **1,315 W** against a 95 W cap — **14× outside**
+   the envelope, not the 2× measured with the smallest VLM.
+
+### What this does not show
+
+Quality here is **fidelity, not correctness** — no ground-truth annotations exist until Phase 4.
+Cross-family ranking rests on self-consistency plus qualitative inspection of 20 frames from one
+clip of one scene; the SmolVLM2-500M "gymnasium" hallucination is illustrative, not a metric.
+
+---
+
+## 12. Phase 4 results — the scheduler works, with a caveat that must travel with it
+
+`pytest tests/ -q` → **134 passed**. Full write-up in `RESULTS.md` §4; figure
+`results/phase4_pareto.png`.
+
+**Exit criterion met on held-out clips: 100% answer validity and 100% event recall at 7.5 calls/min
+= 0.42% of the oracle's budget** (requirement was ≥85% at ≤20%). At a matched 7.5 calls/min, fixed
+interval manages 87.2%; for perfect validity it needs 30 calls/min — **4× more expensive**.
+
+### The four findings
+
+1. **The obvious accuracy metric measures the wrong thing** (D23). Text agreement against the
+   oracle decays with staleness even when no event is missed, and its ceiling is **0.783**, not 1.0,
+   because the model paraphrases itself. Under it, fixed-interval appeared to beat every
+   content-aware policy — an artifact. The primary metric is now **answer validity**: is the answer
+   we hold about the scene the camera is actually in.
+2. **The simple threshold beat the learned policy** (7.5 vs 11.2 calls/min), which `PROMPT.md`
+   explicitly calls the stronger finding. The learned model had **5 positives in 2,876 frames** and
+   its weights lean on `scene_change` and `motion` — it learned to be a motion detector, and fires
+   22 times on the probes against novelty's 13.
+3. **Embedding novelty survives lighting drift**: 2 calls on the gamma-ramp probe versus 12 for
+   fixed interval. The Phase 2 `semantic/motion` result (4.61 vs 0.42) showing up where it matters.
+4. **The advantage does not generalise across all six clips** (D24). For perfect validity,
+   fixed-interval at 2 s (30 calls/min) is *cheaper* than embedding novelty's best all-clip setting
+   (45 calls/min). A single global threshold does not transfer between scenes.
+
+### What this means for the claim
+
+The headline claim ("~90% of oracle at ~10% of invocations") is **exceeded on held-out clips** and
+**not established in general**. The honest statement is: a scene-aware threshold beats a timer *when
+its threshold suits the scene*. Making the threshold adapt per scene is the obvious next step, and
+this sweep is the evidence for why it is needed.
+
+Limitations: two held-out clips, one of which is single-state so validity there is trivially 1.0;
+call counts of 1–12 make false-trigger rates coarse; synthetic events are easier than real ones.
+
+---
+
+## 13. Next action
+
+**Phase 4 is complete and awaiting confirmation.** Do not start Phase 5 until it is given.
+
+Phase 5 is the semantic cache — **explicitly droppable**. Embedding-keyed answer storage with
+staleness tracking plus a rolling scene-state summary answering queries with no VLM call; measure
+hit rate, staleness distribution and the accuracy cost of serving from cache. If the accuracy cost
+exceeds the latency benefit, `PROMPT.md` says to recommend cutting it — and given Phase 4 showed the
+scheduler already reaches 0.42% of oracle calls, the headroom a cache can add is small. That
+recommendation is a live possibility, not a formality.
+
+---
+
+## Superseded
+
+**Phase 3 is complete and awaiting confirmation.** Do not start Phase 4 until it is given.
+
+Phase 4 is **the core**: pluggable trigger policies behind one interface (`fixed_interval` at
+every-frame/1 Hz/0.5 Hz/0.2 Hz, `motion_threshold`, `embedding_novelty`, `information_gain`, and a
+small `learned` policy), swept across their operating ranges against a per-frame oracle, producing
+`results/phase4_pareto.png` — accuracy vs VLM-calls-per-minute, error bars over repeated runs.
+
+**It needs annotated clips that do not exist yet**, including the lighting-drift and
+rapid-motion-without-semantic-event cases where false triggers are the interesting failure. Those
+must be recorded with **exposure pinned** (§3) or the confound lands inside the very clips meant to
+expose it. That is the first task of Phase 4, and it needs the room set up deliberately.
+

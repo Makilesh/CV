@@ -1,0 +1,39 @@
+# Phase 4 — the scheduler.
+#
+# Clips are synthesised on top of real camera footage. That is a deliberate choice, not a
+# shortcut: the headline failure mode is a false trigger on lighting drift or motion carrying no
+# semantic event, and measuring that requires CERTAINTY that nothing semantic happened — which is
+# exactly what hand-annotating real footage cannot give you. Compositing gives exact labels by
+# construction. The cost is that a pasted object is an easier event than a subtle real one, so
+# Phase 6 adds real annotated data (StreamingBench / OVOBench).
+base_footage: data/clips/desk_60s.mp4
+clip_dir: data/eval_clips
+trace_dir: data/traces
+clip_duration_s: 24.0
+clip_fps: 30.0
+
+clips:
+  - {name: static,          recipe: static}          # control: nothing happens
+  - {name: object_events,   recipe: object_events}   # 3 unmistakable semantic events
+  - {name: lighting_drift,  recipe: lighting_drift}  # FALSE-TRIGGER PROBE
+  - {name: rapid_motion,    recipe: rapid_motion}    # FALSE-TRIGGER PROBE
+  - {name: mixed,           recipe: mixed}           # drift WITH real events: the discriminator
+  - {name: scene_cuts,      recipe: scene_cuts}      # hard cuts: upper bound on detectability
+
+# Held out from learned-policy training, and the split the exit criterion is asserted on.
+# One false-trigger probe and one event clip, so held-out covers both failure directions.
+held_out_clips: [lighting_drift, mixed]
+
+# Oracle settings. One VLM call per frame per clip — 6 x 720 = 4320 calls, cached.
+prompt: "Describe what you see in one short sentence."
+max_tokens: 32
+rebuild_traces: false
+
+# Minimum spacing between calls, applied to every content-driven policy so none of them can
+# degenerate into "call on every frame" and win on accuracy alone.
+min_gap_s: 0.3
+staleness_half_life_s: 3.0
+
+# Frames excluded from ACCURACY scoring while the rolling reference settles. Calls made during
+# warmup still count against the budget — the grading is forgiven, not the cost.
+warmup_frames: 15

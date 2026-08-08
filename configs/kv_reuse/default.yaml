@@ -1,0 +1,45 @@
+# Phase 3: KV-cache reuse and streaming decode, before/after.
+#
+# The model is fixed across arms so the only variables are prompt ordering, the server's
+# --cache-reuse flag, and streaming. Uses the Phase 3 chosen model.
+model: models/Qwen3-VL-4B/Qwen3VL-4B-Instruct-Q8_0.gguf
+mmproj: models/Qwen3-VL-4B/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf
+
+# EVERY CALL MUST BE A DISTINCT FRAME. An earlier version used 12 frames x 3 reps, which made
+# calls 2 and 3 for each frame a full-prompt cache hit *including the image* — in every arm
+# equally, masking the difference the experiment exists to measure and putting absolute TTFT
+# (70 ms) far below the sweep's 159 ms for the same model. A real stream never re-sends a frame.
+clip: data/clips/desk_60s.mp4
+n_frames: 40
+frame_stride: 45
+reps: 1
+warmup: 3
+max_tokens: 48
+prompt: "Describe what you see in one short sentence."
+
+arms:
+  # Image first: image tokens differ every frame, so there is no shared prefix and nothing can be
+  # reused regardless of server flags. This is the naive arrangement and the honest baseline.
+  - label: "A image-first, no reuse"
+    image_first: true
+    stream: true
+    server_args: []
+
+  # Text first: the system prompt and question become a cacheable prefix.
+  - label: "B text-first, slot cache"
+    image_first: false
+    stream: true
+    server_args: []
+
+  # Plus llama-server's chunked prefix reuse.
+  - label: "C text-first, --cache-reuse 256"
+    image_first: false
+    stream: true
+    server_args: ["--cache-reuse", "256"]
+
+  # Non-streaming: no first token exists until the whole answer is done. Isolates what streaming
+  # decode buys, which is the difference between this row's total and arm C's TTFT.
+  - label: "D text-first, non-streaming"
+    image_first: false
+    stream: false
+    server_args: ["--cache-reuse", "256"]

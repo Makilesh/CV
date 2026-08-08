@@ -1,0 +1,51 @@
+# Phase 2 encoder sweep.
+#
+# Candidates span three orders of magnitude of cost, so the latency-vs-quality trade is visible
+# rather than asserted. `downsample32` is the control: no network at all, which is what plain
+# frame differencing sees. If a learned encoder cannot beat it on lighting-vs-semantic
+# discrimination, it has not earned its milliseconds.
+#
+# Both torch and ONNX Runtime are measured for each network. PROMPT.md prefers ORT here, but
+# neither is assumed faster — the numbers decide.
+clip: data/clips/desk_60s.mp4
+n_frames: 24          # quality pairs; each frame costs 6 encodes, so 24 frames = ~140 encodes
+frame_stride: 60      # ~2 s apart at 30 FPS, so the quality set spans the whole clip
+latency_reps: 200
+warmup: 20
+
+candidates:
+  - label: downsample32 (control, no network)
+    kind: downsample
+    size: 32
+
+  - label: mobilenetv3_small@224 torch fp16
+    kind: torch
+    model: mobilenetv3_small_100
+    input_size: 224
+    dtype: fp16
+  - label: mobilenetv3_small@224 onnx
+    kind: onnx
+    model: mobilenetv3_small_100
+    input_size: 224
+
+  - label: dinov2_vits14@224 torch fp16
+    kind: torch
+    model: vit_small_patch14_dinov2.lvd142m
+    input_size: 224
+    dtype: fp16
+  - label: dinov2_vits14@224 onnx
+    kind: onnx
+    model: vit_small_patch14_dinov2.lvd142m
+    input_size: 224
+
+  - label: clip_vitb32@224 torch fp16
+    kind: torch
+    model: vit_base_patch32_clip_224.openai
+    input_size: 224
+    dtype: fp16
+    clip_norm: true
+  - label: clip_vitb32@224 onnx
+    kind: onnx
+    model: vit_base_patch32_clip_224.openai
+    input_size: 224
+    clip_norm: true

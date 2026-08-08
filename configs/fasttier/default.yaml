@@ -1,0 +1,44 @@
+# Fast tier — runs on EVERY frame inside a ~10 ms budget.
+#
+# The budget comes from Phase 1's measured per-stage numbers: vlm_total p50 97.66 ms,
+# capture_read 32.09 ms (camera-paced), everything else ~0. There is room here, but not unlimited
+# room: whatever this costs is paid 30 times a second, forever, whether or not the VLM fires.
+#
+# CHOSEN: mobilenetv3_small via ONNX Runtime CUDA. Measured 2026-08-04 over 7 candidates
+# (results/phase2_encoder_bench.json):
+#
+#   encoder                       p50 ms   sem/light   sem/motion
+#   downsample32 (control)          0.16       19.45         0.42   <- a motion detector
+#   mobilenetv3_small onnx          3.32       12.48         4.61   <- chosen
+#   dinov2_vits14    onnx           4.20       15.84         2.99
+#   clip_vitb32      onnx           4.23        4.47         2.77
+#
+# Read BOTH ratios or the control looks best. `sem/light` alone rewards any encoder that is
+# brightness-invariant, which the mean-centred, L2-normalised control is *by construction* — and
+# its `sem/motion` of 0.42 gives it away: it responds more to movement than to a real event.
+# That is exactly the motion detector Phase 4 has to beat.
+#
+# ONNX Runtime beat PyTorch on every candidate (mobilenet 3.32 vs 5.62 ms), confirming PROMPT.md's
+# preference with numbers rather than assumption.
+#
+# encoder: downsample | torch | onnx
+encoder: onnx
+model: mobilenetv3_small_100
+onnx_path: models/onnx/mobilenetv3_small_100_224.onnx
+input_size: 224
+dtype: fp16
+device: cuda
+clip_norm: false
+downsample_size: 32
+providers: null   # null -> CUDA then CPU; a silent CPU fallback raises rather than being reported
+
+# Motion scoring on a 64x64 grayscale thumbnail. Full-resolution differencing costs ~1 ms of pure
+# memory traffic to learn what the thumbnail already says.
+motion_size: 64
+
+# Rolling reference half-life, in SECONDS not frames, so behaviour does not silently change with
+# capture rate. 2 s means a slow drift accumulates instead of being invisible frame by frame,
+# while a single noisy frame does not by itself read as novel.
+half_life_s: 2.0
+
+keep_embedding: false
