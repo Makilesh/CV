@@ -1,6 +1,6 @@
 # STATUS — where Peripheral is, and where it's going
 
-**Last updated:** 2026-08-08 · **Current phase:** 4 COMPLETE, awaiting confirmation · **Branch:** `phase1`
+**Last updated:** 2026-08-08 · **Current phase:** 5 COMPLETE (cache CUT), awaiting confirmation · **Branch:** `phase1`
 
 This file is the single place to look to answer "what is done, what is assumed, what is next."
 Update it at every phase boundary. `PROMPT.md` is the plan; `CLAUDE.md` is the operating manual.
@@ -47,7 +47,7 @@ Everything else is scaffolding for those two plots.
 | 2 | Fast tier: frame diff, small embedding encoder, scene-change + novelty scoring | sustained FPS over 30 s headless, per-stage timings in metrics JSON | **✅ 94 passed · 30.65 FPS live, 211 FPS unpaced · 4.55 ms/frame** |
 | 3 | Slow tier: 3–4 small VLMs × GGUF quant levels, KV reuse, streaming decode | comparison table in `RESULTS.md`; **p95 TTFT < 400 ms** test | **✅ 110 passed · 8/8 configs pass · p95 195 ms in-pipeline** |
 | 4 | **The scheduler** — pluggable trigger policies, swept against the oracle | `results/phase4_pareto.png`; ≥85% oracle accuracy at ≤20% oracle calls | **✅ 134 passed · 100% validity at 0.42% of oracle calls (held-out)** |
-| 5 | Semantic cache *(droppable)* | hit rate / staleness / accuracy-cost numbers in `RESULTS.md` | not started |
+| 5 | Semantic cache *(droppable)* | hit rate / staleness / accuracy-cost numbers in `RESULTS.md` | **✅ 150 passed · verdict: CUT, with evidence** |
 | 6 | Replay harness + benchmarks + ablations | complete `RESULTS.md`; **no-future-frames test passing** | not started |
 | 7 | Ship: GUI demo, CI, README, demo GIF | fresh clone reaches a working live demo | not started |
 
@@ -228,6 +228,8 @@ Rejected approaches belong here with their reasons.
 | D23 | Phase 4's primary metric is **answer validity** (is the held answer about the current scene state), not text agreement with the oracle | Text agreement decays with staleness even when nothing was missed, and its ceiling is 0.783 not 1.0 because the model paraphrases itself. Under it fixed-interval appeared to win — an artifact of frequent calling keeping text fresh. Validity is paraphrase-immune and 1.0 for the oracle by construction. | Content-F1 alone — the obvious choice, and it would have produced a confidently wrong conclusion about which policy is better |
 | D24 | The Phase 4 headline is stated **on held-out clips, with the all-clips reversal reported beside it** — in RESULTS.md, in STATUS.md and in the figure's own subtitle | On held-out, novelty is 4× cheaper than fixed interval; across all six clips, fixed interval is cheaper for perfect validity. A single global threshold does not transfer across scenes. Quoting only the favourable split would be the exact overclaim this project exists to avoid. | Reporting the held-out 4× alone — a stronger-sounding and unsupported claim |
 | D25 | Evaluation clips are **synthesised on real footage**, not staged or hand-annotated | The headline failure mode is a false trigger where *nothing* semantic happened, and certainty about a negative is what hand-annotation cannot give. Compositing yields exact labels by construction. | Hand-annotating real footage — more realistic events, but no way to prove a clip is event-free, which is what the false-trigger metric requires |
+| D26 | **The semantic cache is cut.** Code kept in `src/peripheral/cache/` with tests; not wired into the pipeline | No threshold avoids calls without costing validity: ≥0.70 never fires, 0.60 fires with a 100% false-hit rate and drops validity 1.000 → 0.660. The scheduler already removed the redundancy a cache would exploit. | Shipping it at a "safe" high threshold — a component that never fires is pure complexity; shipping it low trades a detectable cost (a call) for an undetectable one (a confident wrong answer) |
+| D27 | The keep/cut verdict is **computed by the runner from the measurements**, not written in prose | A recommendation argued in a document drifts from the numbers behind it. `cache_sweep` derives it, and a test asserts no configuration exists that would overturn it — so if the data ever changes, the test fails rather than the prose quietly lying. | Writing the conclusion by hand after reading the table |
 
 ---
 
@@ -457,7 +459,50 @@ call counts of 1–12 make false-trigger rates coarse; synthetic events are easi
 
 ---
 
-## 13. Next action
+## 13. Phase 5 results — the cache is cut, and the reason is the interesting part
+
+`pytest tests/ -q` → **150 passed**. Full write-up in `RESULTS.md` §5.
+
+**Recommendation: CUT.** There is no cache threshold that avoids calls without costing accuracy.
+Above 0.70 similarity the cache never fires at all; at 0.60 it fires and **every hit is wrong**,
+dropping answer validity from 1.000 to 0.660.
+
+**It is not the embedding's fault.** As a same-scene-state classifier over random frame pairs the
+key scores **AUC 0.898**. The problem is *when* it is consulted: only when the scheduler decides to
+call, and the scheduler fires precisely when the frame is unlike recent scene state. At those
+moments the best similarity to anything cached is **0.607 median, 0.718 max** — entirely below the
+0.754 p10 of same-state pairs.
+
+> **The scheduler and the cache compete for the same redundancy, and the scheduler took it first.**
+> After Phase 4 cuts calls to 0.42% of the per-frame oracle, the survivors are by construction the
+> moments the scene genuinely changed — exactly what a cache cannot serve. A cache is worth building
+> *before* a good scheduler, not after.
+
+Code stays in `src/peripheral/cache/` with its tests so the measurement is reproducible; it is
+**not wired into the pipeline**.
+
+Caveat this does not rule out: a key trained specifically to encode scene state (rather than a
+generic ImageNet encoder) might separate at trigger time. This rules out *this* key with *this*
+scheduler.
+
+---
+
+## 14. Next action
+
+**Phase 5 is complete and awaiting confirmation.** Do not start Phase 6 until it is given.
+
+Phase 6 is evaluation: the wall-clock replay harness with **hard no-future-frames enforcement**
+(including a test that deliberately tries to access a future frame and asserts it fails), then
+StreamingBench real-time visual split, OVOBench and the annotated clips, then ablations — remove the
+fast tier, remove KV reuse, replace the scheduler with fixed-interval at matched call budget. The
+prompt is explicit that this is *the most likely place the project silently cheats*, and asks for a
+line-by-line walkthrough of the timing code when done.
+
+Note the cache ablation is now moot — there is no cache in the pipeline to remove.
+
+---
+
+## Superseded
 
 **Phase 4 is complete and awaiting confirmation.** Do not start Phase 5 until it is given.
 
@@ -483,4 +528,5 @@ small `learned` policy), swept across their operating ranges against a per-frame
 rapid-motion-without-semantic-event cases where false triggers are the interesting failure. Those
 must be recorded with **exposure pinned** (§3) or the confound lands inside the very clips meant to
 expose it. That is the first task of Phase 4, and it needs the room set up deliberately.
+
 

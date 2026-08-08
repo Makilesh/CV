@@ -115,6 +115,114 @@ class CacheSweepRunner(BoundedRunner):
         })
 
 
+    def _key_quality(self) -> dict[str, Any]:
+        """Can the cache key tell "same scene state" from "different scene state" at all?
+
+        This is upstream of every threshold choice. If similarity between same-state frames does
+        not separate from similarity between different-state frames, then no threshold exists that
+        both hits often and hits correctly — and the feature is dead regardless of tuning.
+
+        Reported as ROC AUC of cosine similarity as a same-state classifier. 0.5 = the key carries
+        no information about scene state; 1.0 = perfect separation.
+        """
+        out: dict[str, Any] = {}
+        rng = np.random.default_rng(self.seed)
+        aucs = []
+        for name, trace in self.traces.items():
+            emb = self.embeddings[name]
+            st = trace.state_ids
+            if len(set(st.tolist())) < 2:
+                continue  # a single-state clip cannot measure separation
+            same, diff = [], []
+            for _ in range(4000):
+                i, j = rng.integers(0, trace.n_frames, 2)
+                if i == j:
+                    continue
+                s = float(np.dot(emb[i], emb[j]))
+                (same if st[i] == st[j] else diff).append(s)
+            if not same or not diff:
+                continue
+            auc = _auc(np.array(same), np.array(diff))
+            aucs.append(auc)
+            out[name] = {
+                "same_state_median": round(float(np.median(same)), 4),
+                "same_state_p10": round(float(np.percentile(same, 10)), 4),
+                "diff_state_median": round(float(np.median(diff)), 4),
+                "diff_state_p90": round(float(np.percentile(diff, 90)), 4),
+                "auc": round(auc, 4),
+            }
+        return {
+            "per_clip": out,
+            "mean_auc": round(float(np.mean(aucs)), 4) if aucs else None,
+            "similarity_at_trigger": self._similarity_at_trigger(),
+            "what_it_means": (
+                "ROC AUC of embedding cosine similarity as a 'same scene state' classifier over "
+                "RANDOM frame pairs. 0.5 means the key carries no scene-state information. But a "
+                "good AUC here is not sufficient: what matters is the similarity available at the "
+                "moments the cache is actually consulted — see similarity_at_trigger."
+            ),
+        }
+
+    def _similarity_at_trigger(self) -> dict[str, Any]:
+        """The decisive number: how similar is the current frame to anything already cached, **at
+        the moments the scheduler decides to call**?
+
+        The cache is only ever consulted then. And the scheduler fires precisely when novelty is
+        high — when the frame is unlike recent scene state. So the cache is queried at exactly the
+        moments its key is least likely to match anything it holds. This measures that directly.
+        """
+        from ..scheduler.policies import EmbeddingNoveltyPolicy, FrameContext
+
+        best_sims: list[float] = []
+        per_clip: dict[str, Any] = {}
+        for name, trace in self.traces.items():
+            emb = self.embeddings[name]
+            policy = EmbeddingNoveltyPolicy(self.policy_threshold, min_gap_s=self.min_gap_s)
+            policy.reset()
+            stored: list[np.ndarray] = []
+            sims: list[float] = []
+            t_last = None
+            n_calls = 0
+            for i in range(trace.n_frames):
+                t = i / trace.fps
+                ctx = FrameContext(i, t, float(trace.motion[i]), float(trace.novelty[i]),
+                                   float(trace.scene_change[i]), None, t_last, n_calls)
+                if policy.decide(ctx).fire:
+                    if stored:
+                        sims.append(max(float(np.dot(e, emb[i])) for e in stored))
+                    stored.append(emb[i])
+                    t_last = t
+                    n_calls += 1
+                    policy.observe_call(ctx)
+            if sims:
+                per_clip[name] = {
+                    "n_lookups": len(sims),
+                    "max_similarity_median": round(float(np.median(sims)), 4),
+                    "max_similarity_max": round(float(np.max(sims)), 4),
+                }
+                best_sims.extend(sims)
+        return {
+            "per_clip": per_clip,
+            "median_best_similarity": round(float(np.median(best_sims)), 4) if best_sims else None,
+            "max_best_similarity": round(float(np.max(best_sims)), 4) if best_sims else None,
+        }
+
+
+def _auc(pos: np.ndarray, neg: np.ndarray) -> float:
+    """Rank-based ROC AUC: P(similarity of a same-state pair > that of a different-state pair)."""
+    allv = np.concatenate([pos, neg])
+    order = allv.argsort()
+    ranks = np.empty(len(allv), dtype=float)
+    ranks[order] = np.arange(1, len(allv) + 1)
+    # average ranks for ties
+    _, inv, counts = np.unique(allv, return_inverse=True, return_counts=True)
+    sums = np.zeros(len(counts))
+    np.add.at(sums, inv, ranks)
+    ranks = (sums / counts)[inv]
+    r_pos = ranks[: len(pos)].sum()
+    return float((r_pos - len(pos) * (len(pos) + 1) / 2) / (len(pos) * len(neg)))
+
+
 def _aggregate(sims: list, thr: float | None, split: str) -> dict[str, Any]:
     def mean(attr: str) -> float:
         return float(np.mean([getattr(s, attr) for s in sims]))
@@ -142,10 +250,14 @@ def _aggregate(sims: list, thr: float | None, split: str) -> dict[str, Any]:
     }
 
 
-def _verdict(held: list[dict], baseline: dict | None) -> dict[str, Any]:
+def _verdict(
+    held: list[dict], baseline: dict | None, key_quality: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Compute the keep-or-cut recommendation instead of arguing it in prose."""
     if baseline is None:
         return {"recommendation": "inconclusive", "reason": "no no-cache baseline"}
+
+    auc = (key_quality or {}).get("mean_auc")
 
     candidates = [r for r in held if r["cache_threshold"] is not None]
     if not candidates:
@@ -182,9 +294,33 @@ def _verdict(held: list[dict], baseline: dict | None) -> dict[str, Any]:
             f"confidently wrong answer the system cannot detect."
         )
 
+    kq = key_quality or {}
+    sat = kq.get("similarity_at_trigger") or {}
+    med_sim = sat.get("median_best_similarity")
+    per_clip = kq.get("per_clip") or {}
+    same_p10 = [v["same_state_p10"] for v in per_clip.values()]
+    diff_p90 = [v["diff_state_p90"] for v in per_clip.values()]
+
+    root_cause = None
+    if med_sim is not None and same_p10:
+        root_cause = (
+            f"The cache is consulted ONLY when the scheduler decides to call, and the scheduler "
+            f"fires precisely when the frame is unlike recent scene state. At those moments the "
+            f"best similarity to anything already cached is {med_sim:.3f} (median) — far below "
+            f"the {min(same_p10):.2f}–{max(diff_p90):.2f} band where same-state and "
+            f"different-state pairs even begin to separate. The key itself is informative on "
+            f"random pairs (AUC {auc:.3f}); the problem is not the embedding. "
+            f"**The scheduler and the cache are competing for the same redundancy, and the "
+            f"scheduler already removed it.** After Phase 4 cuts calls to 0.42% of the per-frame "
+            f"oracle, the survivors are by construction the moments the scene genuinely changed — "
+            f"exactly the moments a cache cannot serve."
+        )
+
     return {
         "recommendation": rec,
         "reason": reason,
+        "root_cause": root_cause,
+        "key_auc": auc,
         "baseline_calls_per_min": baseline["calls_per_min_mean"],
         "baseline_validity": baseline["answer_validity_mean"],
         "best_lossless": best_safe,

@@ -370,6 +370,81 @@ for. It is reported as measured rather than tuned until it looked better.
 
 ---
 
+## 5. The semantic cache (Phase 5) — **recommendation: cut it**
+
+`PROMPT.md` marks this phase droppable and asks for a recommendation if it does not earn its place.
+It does not, and the reason is more interesting than the feature would have been.
+
+The cache is embedding-keyed: when the scheduler decides a call is warranted, the current fast-tier
+embedding is matched against stored answers, and a close-enough, recent-enough match is served for
+free. Its only real opportunity is a scene **returning to a state it held before** — an object put
+down and picked up, lights dimming and recovering. The clips contain exactly that.
+
+### The measurement
+
+Phase 4's winning policy (`embedding_novelty` @ 0.12) held fixed, so the only variable is the cache.
+Held-out clips:
+
+| cache threshold | calls/min | calls avoided | false-hit rate | answer validity |
+|---|---|---|---|---|
+| **none (baseline)** | 7.50 | — | — | **1.000** |
+| 0.999 – 0.70 | 7.50 | **0.0%** | — | 1.000 |
+| 0.60 | 5.00 | 25.0% | **1.00** | 0.660 |
+| 0.50 | 3.75 | 50.0% | 0.25 | 0.830 |
+
+**There is no threshold that buys anything without costing something.** Above 0.70 the cache never
+fires. Below it, it fires and is wrong: at 0.60 *every single hit* served an answer from the wrong
+scene state, and answer validity collapsed from 1.000 to 0.660.
+
+### Why — and this is the useful part
+
+It is not the embedding's fault. As a "same scene state" classifier over random frame pairs the key
+is decent: **ROC AUC 0.898** (0.873–0.930 per clip).
+
+The problem is *when* the cache gets consulted. It is only ever asked at the moments the scheduler
+decides to call — and the scheduler fires precisely when the frame is **unlike** recent scene state.
+At those moments, the best available similarity to anything already cached is:
+
+| clip | lookups | best-match similarity (median) | (max) |
+|---|---|---|---|
+| lighting_drift | 1 | 0.593 | 0.593 |
+| mixed | 3 | 0.672 | 0.676 |
+| scene_cuts | 3 | 0.615 | 0.718 |
+| static | 1 | 0.600 | 0.600 |
+| **overall** | 8 | **0.607** | **0.718** |
+
+Same-state pairs have a p10 of 0.754. **The cache is asked at similarities of ~0.61, entirely below
+the band where same-state and different-state pairs even begin to separate.**
+
+> **The scheduler and the cache are competing for the same redundancy, and the scheduler already
+> took it.** After Phase 4 cuts invocations to 0.42% of the per-frame oracle, the calls that survive
+> are — by construction — the moments the scene genuinely changed. Those are exactly the moments a
+> cache cannot serve.
+
+### The verdict
+
+A cache would be worth building **before** a good scheduler, not after. Against a fixed-interval
+baseline calling 30×/min on a mostly-static scene there is abundant redundancy to reclaim. Against a
+novelty-triggered scheduler already at 7.5 calls/min there is none left, and the residual is a
+second correctness-critical component whose failure mode — a confidently wrong answer at zero cost,
+which the system cannot detect — is worse than the one it replaces.
+
+**Four solid components beat five with one that does not earn its place.** The code remains in the
+tree (`src/peripheral/cache/`) with its tests, because the measurement is the deliverable and
+someone should be able to re-run it; it is **not wired into the pipeline**.
+
+### Limitations
+
+- Two held-out clips, and only 8 cache lookups across them — the scheduler's efficiency is exactly
+  what makes this hard to measure, and the sample is correspondingly tiny.
+- A different key (a scene-state embedding trained for the purpose, rather than a generic
+  ImageNet-class encoder) might separate states well enough at trigger time. That is a real
+  possibility this experiment does not rule out; it rules out *this* key with *this* scheduler.
+- The rolling scene-state summary (`SceneStateSummary`) answers queries with no VLM call and is
+  tested, but with the cache cut it has no measured benefit to report either.
+
+---
+
 ## Reproducing
 
 ```bash
