@@ -1,6 +1,6 @@
 # STATUS — where Peripheral is, and where it's going
 
-**Last updated:** 2026-08-08 · **Current phase:** 5 COMPLETE (cache CUT), awaiting confirmation · **Branch:** `phase1`
+**Last updated:** 2026-08-08 · **Current phase:** 6 COMPLETE, awaiting confirmation · **Branch:** `phase1`
 
 This file is the single place to look to answer "what is done, what is assumed, what is next."
 Update it at every phase boundary. `PROMPT.md` is the plan; `CLAUDE.md` is the operating manual.
@@ -48,7 +48,7 @@ Everything else is scaffolding for those two plots.
 | 3 | Slow tier: 3–4 small VLMs × GGUF quant levels, KV reuse, streaming decode | comparison table in `RESULTS.md`; **p95 TTFT < 400 ms** test | **✅ 110 passed · 8/8 configs pass · p95 195 ms in-pipeline** |
 | 4 | **The scheduler** — pluggable trigger policies, swept against the oracle | `results/phase4_pareto.png`; ≥85% oracle accuracy at ≤20% oracle calls | **✅ 134 passed · 100% validity at 0.42% of oracle calls (held-out)** |
 | 5 | Semantic cache *(droppable)* | hit rate / staleness / accuracy-cost numbers in `RESULTS.md` | **✅ 150 passed · verdict: CUT, with evidence** |
-| 6 | Replay harness + benchmarks + ablations | complete `RESULTS.md`; **no-future-frames test passing** | not started |
+| 6 | Replay harness + benchmarks + ablations | complete `RESULTS.md`; **no-future-frames test passing** | **✅ 170 passed · Gate 3 caught a real bug · SB subset 0.714** |
 | 7 | Ship: GUI demo, CI, README, demo GIF | fresh clone reaches a working live demo | not started |
 
 **Protocol:** phases run strictly in order. Each ends with its test, a reported number, and a full
@@ -492,7 +492,53 @@ scheduler.
 
 ---
 
-## 14. Next action
+## 14. Phase 6 results — the harness caught our own bug
+
+`pytest tests/ -q` → **170 passed**. Full write-up in `RESULTS.md` §6 and §7.
+
+**Gate 3 fired on the first real benchmark run and it was right:**
+`sample_41_1: evidence t=20.020 > query t=20.000`. The loop processed the arriving frame before
+answering a query due 20 ms earlier. Our own clips masked it — at 30 fps a frame lands exactly on
+every 2 s query, so the check passed on arithmetic luck. Fixed in both runners; pinned by
+`test_a_query_between_two_frames_must_use_the_earlier_frame` (D29).
+
+| deliverable | result |
+|---|---|
+| anti-cheat suite | **20 tests**, including walking all 59 future indices and forging a batch reader to prove the audit fires |
+| wall-clock replay, 4 clips | 720 frames in 23.97 s vs 720.1 allowance · `within_wall_clock` ✅ · **0** violations · 11/11 queries |
+| ablations | `no_fast_tier` == `fixed_interval_matched` **by construction** — no fast tier means no scheduler |
+| **oracle gap** | **100% missed events, 0% detection lag** |
+| StreamingBench RTVU **subset** | **25/35 = 0.714** (random 0.250), 1,352 s of 1.0× replay, 0 violations |
+| OVO-Bench | **not run** — 199.6 GB split tar, unextractable in parts, 130 GB free |
+
+**The gap is one clip and it misses by 0.006.** Five of six clips reach validity 1.000.
+`object_events` gets 1 call and misses 3/3 events; the strongest event peaked at novelty **0.1140**
+against the **0.12** threshold. Detection lag contributes nothing, so **the fix is per-scene
+threshold adaptation, not faster reaction**.
+
+**One honest caveat on the benchmark:** the single-threaded replay runner falls behind by up to 1.6 s
+during blocking VLM calls (2.6–5.4% of frames late). It never runs *ahead*, so 0.714 is a **lower
+bound** — the threaded pipeline never blocks capture. Reported rather than corrected, because the
+single-threaded design is what makes the timing auditable line by line.
+
+---
+
+## 15. Next action
+
+**Phase 6 is complete and awaiting confirmation.** Do not start Phase 7 until it is given.
+
+Phase 7 is ship: a live webcam GUI demo with a HUD (native Windows, not Docker), Docker for the
+replay/eval path only with the split documented honestly, GitHub Actions CI running the replay
+harness on a small fixed clip subset (CPU-only, gating correctness not performance), a `README.md`
+with both Pareto charts above the fold and explicit limitations, and a demo GIF showing
+object swap → novelty spike → VLM fires → answer updates.
+
+**The README must carry the §7 "what this did not establish" list**, not just the headline — the
+all-clips reversal and the 7-sample benchmark subset belong above the fold, not in a footnote.
+
+---
+
+## Superseded
 
 **Phase 5 is complete and awaiting confirmation.** Do not start Phase 6 until it is given.
 
@@ -533,5 +579,6 @@ small `learned` policy), swept across their operating ranges against a per-frame
 rapid-motion-without-semantic-event cases where false triggers are the interesting failure. Those
 must be recorded with **exposure pinned** (§3) or the confound lands inside the very clips meant to
 expose it. That is the first task of Phase 4, and it needs the room set up deliberately.
+
 
 

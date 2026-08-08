@@ -563,7 +563,65 @@ False triggers are rare and cheap: 1 call each on `lighting_drift`, `mixed`, `sc
 
 ### External benchmarks
 
-**StreamingBench, Real-Time Visual Understanding split.** *(numbers below)*
+**StreamingBench, Real-Time Visual Understanding split — subset.**
+
+7 samples, 35 questions, **1,352 s of wall-clock replay at 1.0×** (run took 1,360 s). Each question
+answered zero-shot from the single frame the scheduler was holding at that timestamp:
+
+| | |
+|---|---|
+| **accuracy** | **25/35 = 0.714** (random baseline 0.250) |
+| unparsed answers | 0 |
+| mean / max staleness of the answering frame | 0.594 s / 5.68 s |
+| all within wall clock | ✅ |
+| future-evidence violations | **0** |
+
+Per sample: 0.60, 0.40, 0.60, 0.80, **1.00**, 0.80, 0.80. Sample 41 — the one that triggered the
+Gate 3 violation before the fix — now runs clean.
+
+By task type:
+
+| task | score |
+|---|---|
+| Causal Reasoning | 3/3 = 1.00 |
+| Clips Summarize | 1/1 = 1.00 |
+| Object Perception | 8/10 = 0.80 |
+| Text-Rich Understanding | 4/5 = 0.80 |
+| Action Perception | 2/3 = 0.67 |
+| Attribute Perception | 6/9 = 0.67 |
+| Event Understanding | 1/2 = 0.50 |
+| Prospective Reasoning | 0/1 = 0.00 |
+| Spatial Understanding | 0/1 = 0.00 |
+
+The two zeros are single questions each — noise, not a finding. The pattern that is plausible is
+that single-frame questions (Object Perception, Text-Rich) score well and temporally-extended ones
+(Event Understanding, Prospective Reasoning) do not, which is what answering from **one** held frame
+would predict.
+
+#### ⚠️ The replay ran behind, and that matters
+
+The audit confirms we never ran *ahead* — but it also shows we ran *late*:
+
+| sample | frames | elapsed | frames late (>50 ms) | max lateness |
+|---|---|---|---|---|
+| 9 | 2,251 | 75.4 s | 75 (3.3%) | 618 ms |
+| 1 | 3,201 | 129.2 s | 152 (4.7%) | 1,247 ms |
+| 3 | 4,276 | 172.3 s | 161 (3.8%) | 1,188 ms |
+| 4 | 5,501 | 221.2 s | 160 (2.9%) | 1,521 ms |
+| 41 | 5,852 | 245.3 s | 160 (2.7%) | 1,587 ms |
+| 8 | 15,346 | 257.3 s | 829 (5.4%) | 1,203 ms |
+| 23 | 6,187 | 259.3 s | 159 (2.6%) | 1,268 ms |
+
+The cause is structural: this runner is **single-threaded on purpose**, so program order is
+verifiable line by line — which is what makes the timing auditable. But that means a blocking VLM
+call (160–500 ms) delays the next frame read, and the replay falls behind by up to 1.6 s.
+
+**This biases the result downward, not upward.** Running late means the scheduler saw an older frame
+than a non-blocking implementation would have provided; it never gave the system information it
+should not have had. So 0.714 is a **lower bound** on what the threaded pipeline (Phase 1, where the
+capture thread never blocks on inference — invariant 7) would achieve. It is reported rather than
+corrected, because correcting it would mean giving up the auditability that is the point of this
+harness.
 
 **OVO-Bench: not run, and it is not obtainable here.** The dataset is 199.6 GB published as a single
 tar split across 22 parts of 10.74 GB. A split tar cannot be partially extracted — every part is
@@ -587,6 +645,42 @@ selected to fit a stated budget, shortest clips first, and reported as a subset.
   streaming system, not the model's ceiling.
 - OVO-Bench is absent entirely.
 - The annotated clips remain synthetic events on real footage (§4 limitations).
+- The single-threaded replay runner falls behind by up to 1.6 s during VLM calls. This depresses the
+  StreamingBench number rather than inflating it, and the threaded pipeline does not have the
+  problem — but the two are therefore not identical systems, and the benchmark number belongs to the
+  auditable one.
+
+---
+
+## 7. What this project established, and what it did not
+
+**Established, with measurements:**
+
+- Per-frame VLM inference on this laptop is outside the **power** envelope, not merely the time
+  budget: 43.8 J per answer means a 30 FPS oracle needs 1,315 W against a 95 W cap (§1, §3).
+- A two-tier split works: the fast tier watches every frame for **8.2 W** and 4.55 ms, where
+  answering every frame costs 65.6 W and still cannot keep up (§2).
+- A quality-grade VLM meets an interactive latency target on consumer hardware: **p95
+  photon-to-first-token 195 ms** against a 400 ms target, at 6.04 GB of 11.94 GB (§3).
+- On held-out clips a novelty-triggered scheduler holds a valid answer on **100%** of frames at
+  **0.42%** of the per-frame oracle's calls — 4× cheaper than a timer for the same result (§4).
+- A semantic cache does **not** earn its place once a good scheduler exists, and the reason is
+  structural rather than incidental (§5).
+- The evaluation harness catches its own violations: Gate 3 found a real 20 ms future-evidence bug in
+  our code (§6).
+
+**Not established:**
+
+- **The headline claim does not generalise.** "~90% of oracle at ~10% of invocations" holds on
+  held-out clips and fails across all six: a single global novelty threshold does not transfer
+  between scenes. The failure is quantified — 100% of the oracle gap is missed events, and the
+  strongest missed event peaked at 0.1140 against a 0.12 threshold (§6).
+- **Per-scene threshold adaptation is the open problem**, and this work is the evidence for why it is
+  needed rather than a solution to it.
+- **No claim about real semantic events.** Every scheduler number rests on synthetic events
+  composited onto one desk scene. The external benchmark result is a 7-sample subset.
+- **No claim of architectural novelty.** Dispider already decomposed perception/decision/reaction
+  (§ prior art in STATUS.md). The contribution here is the constraint and the measurement.
 
 ---
 
