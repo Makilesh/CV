@@ -101,6 +101,17 @@ class ReplayEvalRunner(BoundedRunner):
         self._frames += 1
         replay_t = self.source.due_time(frame.frame_id)
 
+        # A query due STRICTLY BEFORE this frame arrived must be answered from the evidence held at
+        # that time — i.e. from before this frame is processed. Doing it after would hand the query
+        # evidence from its own future. This had the same latent bug as the StreamingBench runner
+        # and passed only because 30 fps puts a frame exactly on every 2-second query boundary;
+        # that is arithmetic luck, not correctness, so it is fixed rather than relied on.
+        for query in [q for q in self.timeline.due(replay_t) if q.t < replay_t]:
+            self.timeline.answer(
+                query, answer=self.current_answer, evidence_frame=self.evidence_frame,
+                evidence_t=self.evidence_t, answered_at=replay_t,
+            )
+
         self.recorder.record_frame_captured(frame.frame_id, frame.t_capture)
 
         # --- fast tier -------------------------------------------------------------------
@@ -158,7 +169,8 @@ class ReplayEvalRunner(BoundedRunner):
             self.n_calls += 1
             self.policy.observe_call(ctx)
 
-        # --- answer any queries whose time has come --------------------------------------
+        # --- queries due exactly at this frame's timestamp may use it ---------------------
+        # Same instant is "present", not "future"; QueryTimeline allows evidence_t == query.t.
         for query in self.timeline.due(replay_t):
             self.timeline.answer(
                 query,

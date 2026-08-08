@@ -445,6 +445,151 @@ someone should be able to re-run it; it is **not wired into the pipeline**.
 
 ---
 
+## 6. Evaluation (Phase 6)
+
+### The replay harness, and the bug it caught
+
+`PROMPT.md` calls this *the most likely place the project silently cheats*. So the no-future-frames
+invariant is enforced by **three independent gates**, not one convention
+(`src/peripheral/eval/replay.py`):
+
+1. **The decoder never runs ahead.** `read()` calls `clock.sleep_until(due)` *before*
+   `cap.read()`. Frame *n* is not withheld from the consumer — it is not decoded. There is nothing
+   in memory to reach.
+2. **Explicit forward access is refused.** `frame_at(i)` raises `FutureFrameError` when frame *i*
+   is not yet due. This method exists *only* so the invariant is attackable, because an untested
+   invariant is a hope.
+3. **Answers are audited against their evidence.** `QueryTimeline.answer()` refuses any answer whose
+   evidence timestamp postdates the query.
+
+**Gate 3 fired on the first real benchmark run, and it was right.** StreamingBench sample 41:
+
+```
+FutureFrameError: sample_41_1: evidence t=20.020 > query t=20.000
+```
+
+The evaluation loop processed the arriving frame — updating the held evidence to t=20.020 — *before*
+answering the query due at t=20.000, handing that query 20 ms of its own future. **Our own clips had
+hidden this**: at 30 fps a frame lands exactly on every 2-second query boundary, so `evidence_t ==
+query_t` and the check passed on arithmetic luck rather than correctness. A real benchmark's frame
+rate did not cooperate.
+
+Both runners were restructured so queries due strictly before a frame's arrival are answered from
+the previously held frame, and
+`test_a_query_between_two_frames_must_use_the_earlier_frame` pins it.
+
+**This is the phase working as intended.** The gate caught a real violation in my own code, in a run
+that would otherwise have produced a plausible-looking benchmark number.
+
+**Anti-cheat suite: 20 tests.** They include walking all 59 future indices of a 60-frame clip and
+asserting each raises; proving the post-hoc audit has teeth by forging a batch reader's frame count
+and asserting the audit flips to `False`; and asserting `sleep_until` actually blocks.
+
+### Wall-clock replay of the annotated clips
+
+Four clips, full pipeline, real VLM, queries every 2 s:
+
+| clip | frames | elapsed | clock allowance | within wall clock | queries | future-evidence violations | mean staleness |
+|---|---|---|---|---|---|---|---|
+| mixed | 720 | 23.973 s | 720.19 | ✅ | 11/11 | **0** | 1.058 s |
+| object_events | 720 | 23.972 s | 720.17 | ✅ | 11/11 | **0** | 2.158 s |
+| lighting_drift | 720 | 23.975 s | 720.24 | ✅ | 11/11 | **0** | 2.155 s |
+| scene_cuts | 720 | 23.971 s | 720.13 | ✅ | 11/11 | **0** | 0.606 s |
+
+Sitting exactly at the clock allowance is what correct pacing looks like; exceeding it is impossible
+by Gate 1.
+
+### Ablations
+
+All six clips. **"Matched call budget" is computed from the full system's measured call rate**, not
+guessed — an earlier hardcoded 8 s interval quietly handed the baseline 29% *more* calls than the
+system it was being compared against.
+
+| arm | validity | event recall | calls/min | false-trigger rate |
+|---|---|---|---|---|
+| **full_system** (novelty @ 0.12) | **0.872** | 0.667 | **5.8** | 0.667 |
+| fixed_interval_matched (10.34 s) | 0.811 | 0.889 | 7.5 | 0.500 |
+| no_fast_tier | 0.811 | 0.889 | 7.5 | 0.500 |
+| motion_only (0.015) | 0.957 | 0.889 | 35.8 | 0.750 |
+| oracle | 1.000 | 1.000 | 1800 | — |
+
+**`no_fast_tier` and `fixed_interval_matched` are identical by construction.** Remove the fast tier
+and the scheduler has no input, so it *is* a timer. That is the cleanest available statement of what
+the fast tier buys: it is the difference between having a scheduler and not having one.
+
+**motion_only reaches higher validity (0.957) — at 6× the calls.** Pixel differencing works if you
+are willing to pay for it, which is the trade the whole project exists to avoid.
+
+Two ablations `PROMPT.md` lists are not run, with reasons:
+
+- **remove the cache** — there is no cache to remove; Phase 5 measured it and cut it (§5). This
+  ablation *is* the shipped configuration.
+- **remove KV reuse** — measured in Phase 3 as its own before/after (160 → 150 ms p50 TTFT, 6%). KV
+  reuse changes latency, not which answer the model produces, so re-running it against accuracy
+  would add noise rather than information.
+
+### ❗ Failure analysis — where the oracle gap actually comes from
+
+Every frame whose held answer describes the wrong scene state is attributed to **exactly one** cause:
+
+| cause | invalid frames | share |
+|---|---|---|
+| **missed events** | **540** | **100.0%** |
+| detection lag | 0 | 0.0% |
+
+**All 540 invalid frames are in one clip.** Five of six clips reach validity 1.000. `object_events`
+gets 1 call, misses 3 of 3 events, and scores 0.234:
+
+| missed event | t | novelty at event | peak novelty after |
+|---|---|---|---|
+| object appears | 6.0 s | 0.0628 | **0.1140** |
+| object changes colour | 12.0 s | 0.0425 | 0.0425 |
+| object removed | 18.0 s | 0.0755 | 0.0755 |
+
+**The threshold is 0.12. The strongest event peaked at 0.1140.** It missed by 0.006.
+
+This is the mechanism behind the Phase 4 "does not generalise" finding, now quantified. Novelty is
+measured against a rolling reference that has already absorbed the scene's baseline variability. On
+this clip a person is moving throughout, so the reference is already far from any individual frame,
+and the *incremental* novelty contributed by an object appearing is small — 0.04 to 0.11, where the
+held-out clips needed 0.12 to suppress lighting drift.
+
+**Detection lag contributes nothing.** When the scheduler fires, it fires promptly; the 0.3 s
+minimum gap is never the binding constraint. So the fix is **per-scene threshold adaptation, not
+faster reaction** — a conclusion the decomposition supports and prose alone could not.
+
+False triggers are rare and cheap: 1 call each on `lighting_drift`, `mixed`, `scene_cuts` and
+`static`, 0 on `rapid_motion` and `object_events`.
+
+### External benchmarks
+
+**StreamingBench, Real-Time Visual Understanding split.** *(numbers below)*
+
+**OVO-Bench: not run, and it is not obtainable here.** The dataset is 199.6 GB published as a single
+tar split across 22 parts of 10.74 GB. A split tar cannot be partially extracted — every part is
+required — against 130 GB free on this machine. There is no honest partial-subset route, so it is
+reported as not done rather than approximated.
+
+For StreamingBench the constraint is time rather than disk. The full RTVU split is ~110 GB across 10
+shards; one shard (samples 1–50, 9.1 GB) was fetched. Covering all 250 questions in that shard needs
+**377 minutes of wall-clock replay**, because replay runs at 1.0× and the clips are minutes long.
+That is the real cost of streaming evaluation and it is not negotiated away — instead a subset is
+selected to fit a stated budget, shortest clips first, and reported as a subset.
+
+**The selection bias favours us**: shorter clips give a scheduler less time to drift out of date.
+
+### Limitations of this phase
+
+- StreamingBench is a **subset of a subset**: 7 of 500 samples, from 1 of 10 shards, chosen by clip
+  length. It is not a StreamingBench score and must never be quoted as one.
+- Our model answers each question zero-shot from **one scheduler-selected frame**. Published
+  StreamingBench numbers come from models given the whole clip. The comparison measures our
+  streaming system, not the model's ceiling.
+- OVO-Bench is absent entirely.
+- The annotated clips remain synthetic events on real footage (§4 limitations).
+
+---
+
 ## Reproducing
 
 ```bash

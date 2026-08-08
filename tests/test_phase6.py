@@ -159,6 +159,26 @@ def test_evidence_exactly_at_the_query_time_is_allowed():
     assert rec.staleness_s == pytest.approx(0.0)
 
 
+def test_a_query_between_two_frames_must_use_the_earlier_frame():
+    """The bug Gate 3 actually caught in a real run, as a regression test.
+
+    A query at t=20.000 with frames at 19.987 and 20.020 must be answered from 19.987. Answering it
+    after processing the 20.020 frame gives it 20 ms of future evidence. Our own clips hid this
+    because 30 fps puts a frame exactly on every 2-second query; StreamingBench's frame rate did
+    not cooperate, and the gate fired on sample 41.
+    """
+    tl = QueryTimeline(queries=[Query(t=20.0, text="q", query_id="q0")], strict=True)
+
+    # Correct: evidence from the frame that had already arrived.
+    rec = tl.answer(tl.queries[0], "a", evidence_frame=599, evidence_t=19.987, answered_at=20.0)
+    assert rec.staleness_s == pytest.approx(0.013, abs=1e-6)
+
+    # Wrong: the next frame, 20 ms in the query's future.
+    tl2 = QueryTimeline(queries=[Query(t=20.0, text="q", query_id="q0")], strict=True)
+    with pytest.raises(FutureFrameError, match="20.020"):
+        tl2.answer(tl2.queries[0], "a", evidence_frame=601, evidence_t=20.020, answered_at=20.0)
+
+
 def test_non_strict_timeline_records_violations_instead_of_raising():
     """Used only for post-hoc auditing of an external system; never for our own measured runs."""
     tl = QueryTimeline(queries=[Query(t=1.0, text="q", query_id="q0")], strict=False)
