@@ -13,6 +13,7 @@ defaults:
   - phase4: default
   - phase5: default
   - phase6: default
+  - streamingbench: default
   - _self_
 
 seed: 1337
