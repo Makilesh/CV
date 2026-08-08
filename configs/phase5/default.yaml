@@ -15,7 +15,10 @@ policy_threshold: 0.12
 
 # Cosine similarity required for a hit. The fast-tier embedding is MobileNetV3-small, whose
 # same-scene adjacent-frame similarity is very high, so useful thresholds sit close to 1.0.
-cache_thresholds: [0.90, 0.95, 0.97, 0.98, 0.99, 0.995, 0.999]
+# Swept far below any sane operating point on purpose. High thresholds turn out never to hit, so
+# the low end is needed to show WHAT HAPPENS when the cache does fire — which is where the
+# false-hit cost becomes visible. A curve that only contains zeros proves nothing.
+cache_thresholds: [0.50, 0.60, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 0.98, 0.999]
 
 # An embedding match says the scene LOOKS the same, not that a stale description is still true.
 max_staleness_s: 30.0

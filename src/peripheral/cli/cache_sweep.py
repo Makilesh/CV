@@ -94,9 +94,11 @@ class CacheSweepRunner(BoundedRunner):
     def teardown(self) -> None:
         held = [r for r in self.rows if r["split"] == "held_out"]
         baseline = next((r for r in held if r["cache_threshold"] is None), None)
-        verdict = _verdict(held, baseline)
+        key_quality = self._key_quality()
+        verdict = _verdict(held, baseline, key_quality)
         self.recorder.record_extra("phase5_cache", {
             "rows": self.rows,
+            "key_quality": key_quality,
             "policy": f"embedding_novelty @ {getattr(self, 'policy_threshold', None)}",
             "verdict": verdict,
             "definitions": {
