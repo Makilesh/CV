@@ -11,6 +11,10 @@ defaults:
   - kv_reuse: default
   - hf_reference: default
   - phase4: default
+  - phase5: default
+  - phase6: default
+  - streamingbench: default
+  - demo: default
   - _self_
 
 seed: 1337

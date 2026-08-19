@@ -1,0 +1,27 @@
+# Phase 5 — semantic cache. EXPLICITLY DROPPABLE.
+#
+# The scheduler already reaches 0.42% of the per-frame oracle's call budget (Phase 4), so whatever
+# a cache saves comes out of an already-tiny number. Its only real opportunity is a scene RETURNING
+# to a state it held before — an object put down and picked up again, lights dimming and
+# recovering. The evaluation clips contain exactly that (object_events ends where it began), so the
+# opportunity is present if it exists at all.
+#
+# The risk is a false hit: serving a stored answer for a scene that only looks similar. That is
+# strictly worse than calling, because it is a confidently wrong answer at zero cost that the
+# system has no way to notice.
+
+# Policy held fixed at the Phase 4 winner so the only variable is the cache.
+policy_threshold: 0.12
+
+# Cosine similarity required for a hit. The fast-tier embedding is MobileNetV3-small, whose
+# same-scene adjacent-frame similarity is very high, so useful thresholds sit close to 1.0.
+# Swept far below any sane operating point on purpose. High thresholds turn out never to hit, so
+# the low end is needed to show WHAT HAPPENS when the cache does fire — which is where the
+# false-hit cost becomes visible. A curve that only contains zeros proves nothing.
+cache_thresholds: [0.50, 0.60, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 0.98, 0.999]
+
+# An embedding match says the scene LOOKS the same, not that a stale description is still true.
+max_staleness_s: 30.0
+max_entries: 64
+
+rebuild: false

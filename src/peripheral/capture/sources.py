@@ -46,6 +46,22 @@ class Frame:
     image: np.ndarray
     #: Fast-tier scores, attached by FastTierStage. None until Phase 2's fast tier runs.
     scores: Any | None = None
+    #: The frame's position in the STREAM's timeline, in seconds. Defaults to `t_capture`.
+    #:
+    #: These differ, and conflating them is a real bug we shipped and had to fix. `t_capture` is
+    #: when *we* got the frame; `t_presentation` is when it happened. For a live camera they are
+    #: the same. For a file read offline they are not: during Phase 4 trace building the VLM took
+    #: ~500 ms per frame, so consecutive frames were "captured" 500 ms apart while actually being
+    #: 33 ms apart in the video. Any time-constant signal — the fast tier's rolling reference has a
+    #: half-life in seconds — then behaves as though the video were 15x slower, and novelty came
+    #: out ~4x too small. Latency metrics must use `t_capture`; signal processing must use
+    #: `t_presentation`.
+    t_presentation: float | None = None
+
+    @property
+    def t_stream(self) -> float:
+        """Presentation time, falling back to capture time for live sources."""
+        return self.t_capture if self.t_presentation is None else self.t_presentation
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -238,7 +254,9 @@ class FileSource(FrameSource):
             due = self._t_first + self._next_id / self._fps
             _sleep_until(due)
 
-        frame = Frame(self._next_id, now(), image)
+        # t_presentation comes from the clip's own timeline, so time-constant signals behave the
+        # same whether the clip is replayed live or processed offline. See Frame.t_presentation.
+        frame = Frame(self._next_id, now(), image, t_presentation=self._next_id / self._fps)
         self._next_id += 1
         return frame
 
@@ -306,7 +324,8 @@ class SyntheticSource(FrameSource):
         cy = int(self.height / 2 + self.height / 4 * np.sin(phase))
         cv2.rectangle(image, (cx - 30, cy - 30), (cx + 30, cy + 30), (200, 180, 60), -1)
 
-        frame = Frame(self._next_id, now(), image)
+        frame = Frame(self._next_id, now(), image,
+                      t_presentation=self._next_id / self.target_fps)
         self._next_id += 1
         return frame
 

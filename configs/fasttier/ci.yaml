@@ -1,0 +1,22 @@
+# Fast tier for CI and the eval container: the no-network control encoder.
+#
+# CI is CPU-only and has no ONNX Runtime GPU, no model weights and no camera. `downsample` needs
+# none of them, so the replay harness, the scheduler policies and the simulator can all be
+# exercised for correctness.
+#
+# THIS CONFIG CANNOT PRODUCE A QUALITY RESULT. Phase 2 measured `downsample32` at
+# `semantic/motion` = 0.42 — it is a motion detector, which is precisely what the project has to
+# beat. It is here to gate correctness, never to gate accuracy.
+encoder: downsample
+downsample_size: 32
+model: null
+onnx_path: null
+input_size: 32
+dtype: fp32
+device: cpu
+clip_norm: false
+providers: null
+
+motion_size: 64
+half_life_s: 2.0
+keep_embedding: false

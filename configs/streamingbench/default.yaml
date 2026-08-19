@@ -1,0 +1,15 @@
+# StreamingBench — Real-Time Visual Understanding split.
+#
+# THE FULL DATASET IS 202.6 GB (the RTVU split alone is ~110 GB across 10 shards), and covering all
+# 250 questions in samples 1-50 needs 377 MINUTES of wall-clock replay because replay runs at 1.0x
+# and the clips are minutes long. Neither is a reason to fake it: we evaluate ONE shard and a subset
+# chosen to fit a stated wall-clock budget, and report it as a subset.
+csv: data/streamingbench/Real_Time_Visual_Understanding.csv
+video_root: data/streamingbench/videos
+
+# Wall-clock seconds of replay to spend. Samples are taken shortest-first until this is used up,
+# which biases the subset towards short clips — a bias that FAVOURS us (less time to go stale) and
+# is recorded in the metrics file next to the score.
+wall_clock_budget_s: 1500.0
+
+max_tokens: 8   # a single option letter; more just invites the model to ramble

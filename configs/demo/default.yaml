@@ -1,0 +1,13 @@
+# Phase 7 live demo.
+#
+# Uses the Phase 4 winning policy and the Phase 3 chosen model, so what the demo shows is the system
+# the results describe — not a specially-tuned showcase.
+policy_kind: embedding_novelty
+policy_value: 0.12
+
+prompt: "Describe what you see in one short sentence."
+max_tokens: 32
+
+# Set to a directory to save HUD-composited frames (used to build the demo GIF, and handy for
+# debugging what the HUD actually looked like during a run).
+write_frames: null

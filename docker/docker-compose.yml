@@ -1,0 +1,33 @@
+# Peripheral — eval path only.
+#
+# There is deliberately no `demo` service. See docker/Dockerfile for why: the live demo needs a
+# webcam and a specific CUDA build, and a container that appeared to reproduce the measured numbers
+# on different hardware would be worse than no container. Run the demo natively on Windows:
+#
+#   .venv/Scripts/python.exe -m peripheral.cli.demo --duration 120 --metrics-out results/demo.json
+
+services:
+  # The correctness gate. Same command CI runs.
+  eval:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: peripheral-eval:latest
+    volumes:
+      - ../results:/app/results
+    command: ["python", "-m", "pytest", "tests/", "-q",
+              "-m", "not gpu and not webcam and not vlm and not slow"]
+
+  # A wall-clock replay over a synthetic source, proving the harness runs end to end with no
+  # camera, no GPU and no weights. Produces a metrics JSON in ./results.
+  replay-smoke:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: peripheral-eval:latest
+    volumes:
+      - ../results:/app/results
+    command: ["python", "-m", "peripheral.cli.smoke",
+              "--duration", "5", "--headless",
+              "--metrics-out", "results/docker_smoke.json",
+              "-o", "capture=synthetic", "-o", "fasttier=ci"]

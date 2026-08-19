@@ -247,14 +247,27 @@ loss.
 ## 4. The scheduler (Phase 4)
 
 Figure: `results/phase4_pareto.png`. Six 24-second annotated clips (720 frames each), five policy
-families across nine operating points each, replayed against a **true per-frame oracle** — 4,320
-VLM calls, cached so the ~270-run sweep is an exact lookup rather than days of GPU time.
+families across nine operating points, replayed against a **true per-frame oracle** — 4,320 VLM
+calls, cached so the ~270-run sweep is an exact lookup rather than days of GPU time.
 
-**The sweep measures accuracy and call rate only. It never measures latency** — that was done end
-to end on the real pipeline in §3. Mixing the two would let a cached replay masquerade as a timing
-result.
+**The sweep measures accuracy and call rate only, never latency** — latency was measured end to end
+on the real pipeline in §3.
 
-### The clips, and why they are synthesised
+> ### ⚠️ These numbers were re-derived after a timing bug was found in Phase 7
+>
+> The fast tier's rolling reference has a half-life **in seconds**, and it was keyed off
+> `t_capture` — the moment *we read* the frame. During trace building the oracle's VLM call took
+> ~500 ms per frame, so consecutive frames appeared 500 ms apart when they were 33 ms apart in the
+> video. The reference therefore tracked ~15× faster than the stream, and **novelty came out 3–4×
+> too small** (median 0.016 where it should have been 0.057).
+>
+> The fix separates `t_presentation` (where the frame sits in the stream) from `t_capture` (when we
+> got it), and is pinned by `test_novelty_does_not_depend_on_how_fast_frames_are_read`. Every
+> trace-derived number in §4, §5 and §6 was recomputed. **Two conclusions reversed** — see §5 and
+> the ranking below. The oracle's answers were unaffected (they depend on the frame, not on timing),
+> so only the signals were recomputed rather than re-running 4,320 VLM calls.
+
+### The clips
 
 | clip | states | semantic events | purpose |
 |---|---|---|---|
@@ -265,108 +278,249 @@ result.
 | `mixed` | 3 | 2 | drift **with** real events — the discriminating case |
 | `scene_cuts` | 3 | 2 | hard cuts, an upper bound on detectability |
 
-Events are composited onto real camera footage. That is deliberate: the headline failure mode is a
-false trigger where **nothing** semantic happened, and certainty about a negative is exactly what
-hand-annotating real footage cannot provide. The cost is that a pasted object is an *easier* event
-than a subtle real one — Phase 6 adds real annotated data.
+Events are composited onto real camera footage, because the headline failure mode is a false trigger
+where **nothing** semantic happened, and certainty about a negative is what hand-annotating real
+footage cannot give. The cost: a pasted object is an *easier* event than a subtle real one.
 
-### ⚠️ The obvious accuracy metric measures the wrong thing
+### The metric
 
-The natural metric — text agreement between the answer being held and the oracle's answer for the
-current frame — **does not work here**, and finding out why changed the whole analysis.
+The obvious metric — text agreement with the oracle — **does not work here**. Because llama-server
+is not deterministic (§3), the oracle disagrees with itself: agreement between its answers on two
+adjacent frames in the same scene state is **0.783**, not 1.0. That is the ceiling, and the score
+keeps decaying with staleness (0.635 at 15 frames) *even when no event was missed*. It measures
+staleness, not correctness.
 
-Because llama-server is not deterministic (§3), the oracle disagrees *with itself*. Measured on
-these clips, agreement between the oracle's answers on two **adjacent frames in the same scene
-state** — where nothing changed and every difference is serving noise — is **0.783**. That is the
-ceiling: a policy calling on every frame but one cannot score higher. And the score keeps decaying
-with staleness (0.783 at 1 frame, 0.635 at 15, 0.583 at 30) *even when no event was missed*.
+The primary metric is therefore **answer validity**: the fraction of frames on which the answer
+being held describes the scene state the camera is actually in. Paraphrase-immune, and 1.0 for the
+oracle by construction.
 
-So text agreement largely measures **staleness, not correctness**, and against a ceiling of 0.783
-rather than 1.0. Under it, fixed-interval appeared to beat every content-aware policy — an artifact
-of frequent calling keeping text fresh, not of better decisions.
+### Exit criterion — met
 
-**The primary metric is therefore answer validity**: the fraction of frames on which the answer
-being held describes the scene state the camera is actually in. It is immune to paraphrase, and
-1.0 for the oracle by construction. Text agreement is still reported, as a secondary number
-against its measured ceiling.
-
-### Exit criterion — met, on held-out clips
-
-Held out from learned-policy training and from tuning: `lighting_drift` and `mixed` (one probe, one
-event clip, so both failure directions are represented).
+Held out from training and tuning: `lighting_drift` and `mixed`. Cheapest operating point reaching
+**perfect** validity:
 
 | policy | operating point | validity | event recall | calls/min | % of oracle |
 |---|---|---|---|---|---|
-| **embedding_novelty** | 0.12 | **1.000** | **1.00** | **7.5** | **0.42%** |
-| motion_threshold | 0.015 | 1.000 | 1.00 | 10.0 | 0.56% |
-| learned | 0.95 | 1.000 | 1.00 | 11.2 | 0.62% |
+| **motion_threshold** | 0.015 | 1.000 | 1.00 | **10.0** | **0.56%** |
+| learned | 0.95 | 1.000 | 1.00 | 13.8 | 0.76% |
 | fixed_interval | 2 s | 1.000 | 1.00 | 30.0 | 1.67% |
-| fixed_interval | 10 s | 0.872 | 1.00 | 7.5 | 0.42% |
+| embedding_novelty | 0.12 | 1.000 | 1.00 | 45.0 | 2.50% |
 
-**Requirement: ≥85% of oracle accuracy at ≤20% of oracle calls. Achieved: 100% answer validity and
-100% event recall at 0.42% of oracle calls.**
+**Requirement: ≥85% of oracle accuracy at ≤20% of oracle calls. Achieved: 100% validity and 100%
+event recall at 0.56% of oracle calls.** The criterion passes with two orders of magnitude to spare.
 
-At a *matched* budget of 7.5 calls/min, embedding novelty holds a valid answer on **100%** of frames
-where fixed interval manages **87.2%**. For perfect validity, fixed interval needs 30 calls/min
-against novelty's 7.5 — **4× more expensive for the same result**.
+### ❗ But the ranking is not what the project assumed
 
-### The simple threshold beats the learned policy
+With corrected signals, **`embedding_novelty` is the *worst* of the content-aware policies** — it
+needs 45 calls/min for perfect validity where a plain motion threshold needs 10. And at the 85% bar,
+plain `fixed_interval` at 10 s is cheapest of all (0.872 validity at 7.5 calls/min, 0.42%).
 
-`PROMPT.md` asks for this to be said plainly if it happens, and it happened: **embedding novelty
-(7.5 calls/min) beats the learned policy (11.2) and the motion threshold (10.0)** for identical
-validity and recall.
+Across all six clips the picture is worse still: for perfect validity `fixed_interval` at 2 s
+(30 calls/min) is **cheaper than every content-aware policy**, and the best content result is
+`learned` at 0.991 validity for 32.1 calls/min.
 
-The learned policy had almost nothing to learn from — **5 positive examples in 2,876 frames**,
-because semantic events are rare by construction. Its fitted weights lean hardest on `scene_change`
-(251) and `motion` (98), i.e. **it learned to be a motion detector**, which is exactly why it fires
-22 times on the probe clips where nothing happens, against novelty's 13.
+**The honest summary: on this data, no content-aware scheduler convincingly beats a timer at a
+matched budget.** Different policies win in different regions and no single one dominates. The
+embedding-novelty threshold that the earlier (buggy) numbers selected is not the right choice.
 
-A one-parameter threshold on a good embedding beat a learned model, on this data. More training
-clips with more events might change that; on what exists, the simple thing won.
+The learned policy remains poorly supported — **5 positive examples in 2,876 frames** — and its
+weights lean on `scene_change` (263) and `motion` (48), i.e. it learned to be a motion detector,
+which is consistent with `motion_threshold` performing well.
 
-### False triggers where nothing happens
+---
 
-On `lighting_drift` — a full gamma ramp down and back, zero semantic change, so **every call after
-the first is wasted by construction**:
+## 5. The semantic cache (Phase 5) — **recommendation: KEEP**
 
-| policy | calls on the probe |
+> **This verdict reversed.** Before the timing fix, the scheduler fired so rarely (an artifact of the
+> 3–4× under-scaled novelty) that a cache had nothing left to reclaim, and the recommendation was to
+> cut it. With correct signals the scheduler fires ~6× more often, and the redundancy is there.
+
+Phase 4's policy held fixed, so the only variable is the cache. Held-out clips:
+
+| cache threshold | calls/min | calls avoided | false-hit rate | answer validity |
+|---|---|---|---|---|
+| **none (baseline)** | 45.00 | — | — | **1.000** |
+| 0.95 | 42.50 | 5.0% | 0.000 | 1.000 |
+| 0.90 | 28.75 | 36.2% | 0.000 | 1.000 |
+| **0.85** | **21.25** | **52.5%** | **0.000** | **1.000** |
+| 0.80 | 15.00 | 66.2% | 0.036 | 0.994 |
+| 0.75 | 11.25 | 74.4% | 0.094 | 0.830 |
+| 0.50 | 5.00 | 88.8% | 0.139 | 0.816 |
+
+**At 0.85 the cache removes 52.5% of VLM calls with zero false hits and no loss of validity.** There
+is a clean knee: above 0.85 it is free but does less; below 0.80 false hits appear and validity
+falls off a cliff.
+
+The key is a decent one — ROC AUC **0.898** as a same-scene-state classifier over random frame
+pairs — and now that the scheduler leaves work on the table, that is enough.
+
+**Recommendation: keep, at threshold 0.85 or 0.90.** 0.90 is the conservative choice: 36.2% of calls
+removed, still zero false hits, more margin against a scene that merely looks similar.
+
+*The failure mode to respect:* a false hit is a confidently wrong answer at zero cost that the system
+cannot detect. That is why the recommendation sits at the zero-false-hit end of the curve rather
+than at the maximum-savings end.
+
+---
+
+## 6. Evaluation (Phase 6)
+
+### The replay harness, and the two bugs it caught
+
+The no-future-frames invariant is enforced by **three independent gates**
+(`src/peripheral/eval/replay.py`):
+
+1. **The decoder never runs ahead.** `read()` calls `clock.sleep_until(due)` *before* `cap.read()`,
+   so a future frame is not withheld — it is not decoded.
+2. **Explicit forward access is refused.** `frame_at(i)` raises `FutureFrameError`. It exists so the
+   invariant is attackable, because an untested invariant is a hope.
+3. **Answers are audited against their evidence.** `QueryTimeline.answer()` refuses any answer whose
+   evidence timestamp postdates the query.
+
+**Gate 3 fired on the first real benchmark run.** StreamingBench sample 41:
+
+```
+FutureFrameError: sample_41_1: evidence t=20.020 > query t=20.000
+```
+
+The loop processed the arriving frame — updating held evidence to 20.020 — *before* answering the
+query due at 20.000. Our own clips had hidden it: at 30 fps a frame lands exactly on every 2-second
+query, so `evidence_t == query_t` and the check passed on **arithmetic luck, not correctness**.
+
+That is one of two timing bugs this project shipped and then caught. The other is the
+`t_presentation` bug in §4. Both were invisible in normal operation and both changed reported
+numbers.
+
+**Anti-cheat suite: 20 tests**, including walking all 59 future indices of a 60-frame clip, and
+forging a batch reader's frame count to prove the audit flips to `False`.
+
+### Wall-clock replay
+
+| clip | frames | elapsed | clock allowance | within wall clock | queries | violations | mean staleness |
+|---|---|---|---|---|---|---|---|
+| mixed | 720 | 23.974 s | 720.21 | ✅ | 11/11 | **0** | 1.824 s |
+| object_events | 720 | 23.975 s | 720.26 | ✅ | 11/11 | **0** | 3.067 s |
+| lighting_drift | 720 | 23.973 s | 720.18 | ✅ | 11/11 | **0** | 2.470 s |
+| scene_cuts | 720 | 23.972 s | 720.16 | ✅ | 11/11 | **0** | 1.197 s |
+
+### Ablations
+
+Budget matched by computing the interval from the full system's **measured** call rate.
+
+| arm | validity | event recall | calls/min |
+|---|---|---|---|
+| full_system (novelty @ 0.12) | 0.941 | 0.889 | 42.5 |
+| fixed_interval_matched | **0.955** | **1.000** | 42.5 |
+| no_fast_tier | **0.955** | **1.000** | 42.5 |
+| motion_only | **0.957** | 0.889 | **35.8** |
+| oracle | 1.000 | 1.000 | 1800 |
+
+**`no_fast_tier` and `fixed_interval_matched` are identical by construction** — remove the fast tier
+and the scheduler has no input, so it *is* a timer.
+
+**And at a matched budget the timer beats the embedding-novelty scheduler** (0.955 vs 0.941). This
+is the same conclusion as §4, reached independently: on this data the fast tier's embedding signal
+is not buying what the project assumed it would.
+
+Two ablations are not run, with reasons: **remove the cache** — Phase 5 now recommends keeping it, so
+the no-cache column *is* the baseline in §5. **remove KV reuse** — measured in §3 as its own
+before/after (6% TTFT); it changes latency, not which answer is produced.
+
+### Failure analysis — where the oracle gap comes from
+
+| cause | invalid frames | share |
+|---|---|---|
+| **missed events** | **250** | **100.0%** |
+| detection lag | 0 | 0.0% |
+
+Five of six clips reach validity 1.000. All 250 invalid frames are in `object_events`, which now
+misses **1** of 3 events (it missed all 3 before the timing fix):
+
+| missed event | novelty at event | peak after | threshold |
+|---|---|---|---|
+| object removed, t=18.0 s | 0.1035 | 0.1035 | 0.12 |
+
+**It misses by 0.017.** Detection lag contributes nothing — when the scheduler fires it fires
+promptly, and the 0.3 s minimum gap is never binding. **The fix is per-scene threshold adaptation,
+not faster reaction.**
+
+False triggers are now frequent (10–24 per clip) because the corrected signals make the scheduler
+fire much more often — which is the same finding as the ablation table from the cost side.
+
+### External benchmarks
+
+**StreamingBench Real-Time Visual Understanding — subset.** 7 samples, 35 questions, **1,352 s of
+wall-clock replay at 1.0×**:
+
+| | |
 |---|---|
-| **embedding_novelty** | **2** |
-| motion_threshold | 3 |
-| learned | 4 |
-| fixed_interval (2 s) | 12 |
+| **accuracy** | **25/35 = 0.714** (random baseline 0.250) |
+| unparsed answers | 0 |
+| mean / max staleness | 0.594 s / 5.68 s |
+| all within wall clock | ✅ |
+| future-evidence violations | **0** |
 
-The embedding survives a lighting change that a motion detector cannot, which is the Phase 2
-`semantic/motion` result (4.61 vs 0.42) showing up where it matters.
+By task: Causal Reasoning 3/3, Clips Summarize 1/1, Object Perception 8/10, Text-Rich 4/5, Action
+Perception 2/3, Attribute Perception 6/9, Event Understanding 1/2, Prospective Reasoning 0/1,
+Spatial Understanding 0/1. Single-frame tasks score well and temporally-extended ones do not, which
+is what answering from **one** held frame predicts.
 
-### ❗ What does not generalise — read this before quoting the 4×
+**The replay ran behind.** The audit confirms it never ran *ahead*, but 2.6–5.4% of frames arrived
+late, by up to 1.6 s, because the single-threaded eval runner blocks during VLM calls. That
+**depresses** the result — the scheduler saw older frames than a non-blocking implementation would
+provide — so 0.714 is a lower bound. Reported rather than corrected, because single-threading is
+what makes the timing auditable line by line.
 
-**Across all six clips the advantage disappears.** For perfect validity, fixed interval at 2 s
-(30 calls/min) is *cheaper* than embedding novelty at its best all-clip setting (45 calls/min). At
-the 85% bar, embedding novelty is cheapest (5.8 calls/min) but its event recall collapses to 0.67 —
-it misses a third of the events.
-
-The reason is structural: **a single global threshold does not transfer across scenes.** The value
-that is perfect on the held-out pair misses subtler events elsewhere; the value that catches
-everything elsewhere wastes calls on drift. The exit criterion is defined on held-out clips and is
-met there by a wide margin, but the honest summary is:
-
-> A scene-aware threshold beats a timer **when its threshold suits the scene**. Making that
-> threshold adapt per scene — rather than being tuned once — is the obvious next step, and this
-> sweep is the evidence for why it is needed.
-
-`information_gain` underperformed throughout (validity 0.83, recall 0.50–0.67): the staleness
-discount made it too conservative, suppressing calls after a change had already been partly paid
-for. It is reported as measured rather than tuned until it looked better.
+**OVO-Bench: not run, and not obtainable here.** 199.6 GB published as one tar split across 22 parts
+of 10.74 GB. A split tar cannot be partially extracted — every part is required — against 130 GB
+free. There is no honest partial route, so it is reported as not done rather than approximated.
 
 ### Limitations
 
-- **Two held-out clips.** `lighting_drift` has a single scene state, so validity there is trivially
-  1.0 for any policy that calls at least once — the discriminating clip is `mixed`. The held-out
-  numbers rest on a narrow base and the error bars are correspondingly coarse.
-- **Call counts are small** (1–12 per probe clip), so false-trigger rates are coarse fractions.
-- **Synthetic events are easy.** Passing here does not demonstrate passing on subtle real events.
-- Policies were swept, not tuned per clip; no policy saw its held-out clips during fitting.
+- StreamingBench is a **subset of a subset**: 7 of 500 samples, from 1 of 10 shards, chosen
+  shortest-clip-first to fit a wall-clock budget. **The selection bias favours us.** Never quote it
+  as a StreamingBench score.
+- Our model answers zero-shot from **one scheduler-selected frame**; published numbers come from
+  models given the whole clip.
+- OVO-Bench is absent entirely.
+- Clips are synthetic events on real footage.
+
+---
+
+## 7. What this project established, and what it did not
+
+**Established, with measurements:**
+
+- Per-frame VLM inference on this laptop is outside the **power** envelope, not merely the time
+  budget: 43.8 J per answer means a 30 FPS oracle needs **1,315 W against a 95 W cap** (§1, §3).
+- The two-tier split is sound: the fast tier watches every frame for **8.2 W** and 4.55 ms, where
+  answering every frame costs 65.6 W and still cannot keep up (§2).
+- A quality-grade VLM meets an interactive latency target on consumer hardware: **p95
+  photon-to-first-token 195 ms** against a 400 ms target, at 6.04 GB of 11.94 GB (§3).
+- Answering rarely is viable: **100% answer validity at 0.56% of the per-frame oracle's calls** on
+  held-out clips (§4).
+- A semantic cache removes **52.5% of remaining VLM calls with zero false hits** (§5).
+- The evaluation harness catches its own violations — twice (§4, §6).
+
+**Not established:**
+
+- **That a scene-aware scheduler beats a timer.** With corrected signals, `fixed_interval` at a
+  matched budget equals or beats the embedding-novelty scheduler on validity (0.955 vs 0.941), and
+  is cheaper than every content-aware policy for perfect validity across all six clips. The
+  *savings* are real and large; the claim that **embedding novelty specifically** is what delivers
+  them is not supported.
+- **That the headline claim generalises.** A single global threshold does not transfer between
+  scenes; per-scene adaptation is the open problem this work motivates rather than solves.
+- **Anything about real semantic events.** Every scheduler number rests on synthetic events
+  composited onto one desk scene; the external benchmark is a 7-sample subset.
+- **Architectural novelty.** Dispider already decomposed perception/decision/reaction. The
+  contribution here is the constraint and the measurement.
+
+**The two bugs are part of the result.** A timing bug in the fast tier under-scaled novelty 3–4×
+and inverted the policy ranking; an ordering bug in the eval loop gave one query 20 ms of its own
+future. Both survived normal operation and were caught only by tests written specifically to attack
+the invariants. That is the argument for building the anti-cheat suite before trusting any number —
+including one's own.
 
 ---
 

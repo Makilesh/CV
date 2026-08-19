@@ -153,6 +153,38 @@ def test_fast_tier_produces_all_three_signals():
     assert all(s.frame_id == i for i, s in enumerate(scores))
 
 
+def test_novelty_does_not_depend_on_how_fast_frames_are_read():
+    """The rolling reference has a half-life in SECONDS, so it must key off stream time.
+
+    Regression: it used `t_capture` (when we read the frame). During Phase 4 trace building the VLM
+    took ~500 ms per frame, so consecutive frames looked 500 ms apart when they were 33 ms apart in
+    the video. The reference then tracked ~15x too fast and novelty came out ~4x too small, which
+    silently changed how often the scheduler fired. Same frames + same stream timeline must give
+    the same novelty regardless of processing speed.
+    """
+    images = [_img(i) for i in range(40)]
+
+    def novelty_series(capture_dt: float) -> list[float]:
+        ft = FastTier(encoder=DownsampleEncoder(16), motion_size=32, half_life_s=2.0)
+        out = []
+        for i, img in enumerate(images):
+            frame = Frame(frame_id=i, t_capture=i * capture_dt, image=img,
+                          t_presentation=i / 30.0)      # the video is 30 fps either way
+            out.append(ft.process(frame).novelty)
+        return out
+
+    fast_reader = novelty_series(0.004)   # unpaced: 4 ms between reads
+    slow_reader = novelty_series(0.5)     # trace building: 500 ms between reads
+    assert fast_reader == pytest.approx(slow_reader, abs=1e-9)
+
+
+def test_live_sources_fall_back_to_capture_time():
+    """A webcam has no separate presentation clock; t_stream must equal t_capture there."""
+    f = Frame(frame_id=0, t_capture=12.5, image=_img(0))
+    assert f.t_presentation is None
+    assert f.t_stream == 12.5
+
+
 def test_fast_tier_reset_clears_history():
     ft = FastTier(encoder=DownsampleEncoder(16))
     for i in range(5):
@@ -303,3 +335,4 @@ def test_the_phase2_chart_exists():
     png = RESULTS / "phase2_fast_tier.png"
     assert png.exists(), "run peripheral.viz.phase2_chart to build it"
     assert png.stat().st_size > 50_000
+
