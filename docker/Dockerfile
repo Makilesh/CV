@@ -22,8 +22,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# CPU-only wheel set. torch is the CPU build here on purpose: nothing in the eval path needs CUDA,
-# and pulling the cu128 wheel would add ~3 GB to reproduce numbers this container must not claim.
+# CPU-only wheel set. NO torch at all: every torch import in the package is inside a function and
+# the eval path tolerates its absence (verified: 179/179 CI tests pass with it blocked).
 COPY docker/requirements-eval.txt ./
 RUN pip install --no-cache-dir -r requirements-eval.txt
 

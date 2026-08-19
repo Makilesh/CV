@@ -40,3 +40,19 @@ CLAUDE.md
 claude.md
 PROMPT.md
 prompt.md
+
+# --- published artifacts, re-included above ---------------------------------
+# results/ is regenerated output, but the figures the README embeds and the metrics JSON that
+# every number in RESULTS.md is derived from have to be in the repo, or the README shows broken
+# images on GitHub and no reader can check a single figure against its source data.
+# Kept as the single copy rather than duplicated into docs/, so a regenerated figure shows up as a
+# diff instead of silently disagreeing with a stale published one.
+!results/*.png
+!results/*.gif
+!results/*.json
+# ...except this one: 17 MB of queue-depth samples from an unpaced throughput run, cited by no table.
+results/phase2_fasttier_unpaced.json
+# Scratch/diagnostic runs that no document references.
+results/_*.json
+results/diag_*.json
+results/ci_smoke.json

@@ -1,0 +1,1844 @@
+{
+  "schema_version": 1,
+  "run": {
+    "name": "phase2_encoder_bench",
+    "status": "completed",
+    "failure": null,
+    "duration_requested_s": 1800.0,
+    "duration_actual_s": 27.1333,
+    "t_start_monotonic": 35339.522169,
+    "started_utc": "2026-08-03T19:01:57Z",
+    "wall_anchor": {
+      "monotonic": 35337.5525674,
+      "utc": "2026-08-03T19:01:57Z",
+      "unix": 1785783717.4284203
+    },
+    "notes": [
+      "quality set: 24 frames from data\\clips\\desk_60s.mp4 (stride 60)",
+      "run ended early: step() returned False"
+    ]
+  },
+  "environment": {
+    "python": "3.12.10",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "seed": 1337,
+    "peripheral_version": "0.1.0",
+    "git_commit": "83fc32b",
+    "gpu_name": "NVIDIA GeForce RTX 5070 Ti Laptop GPU",
+    "gpu_vram_gb": 11.94,
+    "torch": "2.11.0+cu128",
+    "cuda": "12.8",
+    "gpu_capability": "12.0"
+  },
+  "config": {
+    "capture": {
+      "source": "webcam",
+      "device_index": 0,
+      "backend": "CAP_DSHOW",
+      "width": 640,
+      "height": 480,
+      "fourcc": "MJPG",
+      "target_fps": 30.0,
+      "warmup_frames": 5,
+      "auto_exposure": 0.25,
+      "exposure": -5.0
+    },
+    "telemetry": {
+      "power_sample_hz": 10.0,
+      "keep_events": true,
+      "max_events": 500000
+    },
+    "scheduler": {
+      "policy": "none"
+    },
+    "pipeline": {
+      "policy": "drop_oldest",
+      "capture_q_size": 4,
+      "vlm_q_size": 2,
+      "answer_q_size": 8,
+      "queue_sample_hz": 20.0,
+      "prompt": "Describe what you see in one short sentence.",
+      "max_tokens": 32
+    },
+    "vlm": {
+      "name": "SmolVLM2-500M-Video-Instruct-Q8_0",
+      "binary": "vendor/llama.cpp/llama-server.exe",
+      "model": "models/SmolVLM2-500M/SmolVLM2-500M-Video-Instruct-Q8_0.gguf",
+      "mmproj": "models/SmolVLM2-500M/mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf",
+      "host": "127.0.0.1",
+      "port": 8080,
+      "n_gpu_layers": 99,
+      "ctx_size": 4096,
+      "jpeg_quality": 85,
+      "autostart": true,
+      "startup_timeout_s": 300.0,
+      "extra_args": []
+    },
+    "fasttier": {
+      "encoder": "torch",
+      "model": "mobilenetv3_small_100",
+      "input_size": 224,
+      "dtype": "fp16",
+      "device": "cuda",
+      "clip_norm": false,
+      "downsample_size": 32,
+      "onnx_path": null,
+      "providers": null,
+      "motion_size": 64,
+      "half_life_s": 2.0,
+      "keep_embedding": false
+    },
+    "encoder_bench": {
+      "clip": "data/clips/desk_60s.mp4",
+      "n_frames": 24,
+      "frame_stride": 60,
+      "latency_reps": 200,
+      "warmup": 20,
+      "candidates": [
+        {
+          "label": "downsample32 (control, no network)",
+          "kind": "downsample",
+          "size": 32
+        },
+        {
+          "label": "mobilenetv3_small@224 torch fp16",
+          "kind": "torch",
+          "model": "mobilenetv3_small_100",
+          "input_size": 224,
+          "dtype": "fp16"
+        },
+        {
+          "label": "mobilenetv3_small@224 onnx",
+          "kind": "onnx",
+          "model": "mobilenetv3_small_100",
+          "input_size": 224
+        },
+        {
+          "label": "dinov2_vits14@224 torch fp16",
+          "kind": "torch",
+          "model": "vit_small_patch14_dinov2.lvd142m",
+          "input_size": 224,
+          "dtype": "fp16"
+        },
+        {
+          "label": "dinov2_vits14@224 onnx",
+          "kind": "onnx",
+          "model": "vit_small_patch14_dinov2.lvd142m",
+          "input_size": 224
+        },
+        {
+          "label": "clip_vitb32@224 torch fp16",
+          "kind": "torch",
+          "model": "vit_base_patch32_clip_224.openai",
+          "input_size": 224,
+          "dtype": "fp16",
+          "clip_norm": true
+        },
+        {
+          "label": "clip_vitb32@224 onnx",
+          "kind": "onnx",
+          "model": "vit_base_patch32_clip_224.openai",
+          "input_size": 224,
+          "clip_norm": true
+        }
+      ]
+    },
+    "seed": 1337,
+    "run": {
+      "duration_s": 1800.0,
+      "headless": true,
+      "metrics_out": "results\\phase2_encoder_bench.json"
+    },
+    "record": {
+      "path": "data/clips/clip.mp4",
+      "fourcc": "mp4v"
+    },
+    "paths": {
+      "results_dir": "results",
+      "data_dir": "data",
+      "models_dir": "models"
+    }
+  },
+  "definitions": {
+    "t0": "Frame timestamps are taken with time.perf_counter() at the instant OpenCV returns the frame \u2014 NOT true photon arrival. Sensor exposure and driver/USB transport add an unmeasured constant offset, so photon-to-answer latency reported here is a LOWER BOUND.",
+    "photon_to_first_token_ms": "t(first generated token of the answer) - t0(frame that triggered the VLM call). Includes preprocessing, vision encoding, prefill and any IPC \u2014 never model-only time.",
+    "photon_to_answer_ms": "t(final token of the answer) - t0(frame that triggered the VLM call). Same inclusions.",
+    "answer_staleness_ms": "t(answer emitted) - t0(frame whose evidence backs that answer). For a cache hit this is the age of the cached scene evidence, not the age of the cache entry.",
+    "false_trigger_rate": "Fraction of VLM invocations fired on frames externally labelled as carrying no semantic change. Requires ground-truth labels; null when the run has none.",
+    "accuracy_vs_oracle": "Agreement with the per-frame oracle (VLM invoked on every frame) on the same query timeline. Null unless an oracle run was supplied.",
+    "percentiles": "numpy.percentile with linear interpolation over the full population of the run (no warmup discarded unless the run config says so).",
+    "energy_j": "Trapezoidal integration of NVML power samples over the measured window. 'marginal' subtracts the idle baseline measured before the workload started.",
+    "null_vs_zero": "null means NOT MEASURED. 0 means measured and the value was zero. They are never interchangeable."
+  },
+  "metrics": {
+    "frames_captured": 0,
+    "frames_dropped": 0,
+    "drop_rate": null,
+    "achieved_fps": 0.0,
+    "capture_interval_ms": null,
+    "stages_ms": {
+      "encode/clip_vitb32@224 onnx": {
+        "n": 1,
+        "mean": 4.23,
+        "p50": 4.23,
+        "p95": 4.23,
+        "p99": 4.23,
+        "min": 4.23,
+        "max": 4.23,
+        "std": 0.0
+      },
+      "encode/clip_vitb32@224 torch fp16": {
+        "n": 1,
+        "mean": 4.725,
+        "p50": 4.725,
+        "p95": 4.725,
+        "p99": 4.725,
+        "min": 4.725,
+        "max": 4.725,
+        "std": 0.0
+      },
+      "encode/dinov2_vits14@224 onnx": {
+        "n": 1,
+        "mean": 4.195,
+        "p50": 4.195,
+        "p95": 4.195,
+        "p99": 4.195,
+        "min": 4.195,
+        "max": 4.195,
+        "std": 0.0
+      },
+      "encode/dinov2_vits14@224 torch fp16": {
+        "n": 1,
+        "mean": 5.209,
+        "p50": 5.209,
+        "p95": 5.209,
+        "p99": 5.209,
+        "min": 5.209,
+        "max": 5.209,
+        "std": 0.0
+      },
+      "encode/downsample32 (control, no network)": {
+        "n": 1,
+        "mean": 0.157,
+        "p50": 0.157,
+        "p95": 0.157,
+        "p99": 0.157,
+        "min": 0.157,
+        "max": 0.157,
+        "std": 0.0
+      },
+      "encode/mobilenetv3_small@224 onnx": {
+        "n": 1,
+        "mean": 3.32,
+        "p50": 3.32,
+        "p95": 3.32,
+        "p99": 3.32,
+        "min": 3.32,
+        "max": 3.32,
+        "std": 0.0
+      },
+      "encode/mobilenetv3_small@224 torch fp16": {
+        "n": 1,
+        "mean": 5.615,
+        "p50": 5.615,
+        "p95": 5.615,
+        "p99": 5.615,
+        "min": 5.615,
+        "max": 5.615,
+        "std": 0.0
+      }
+    },
+    "queue_depth": null,
+    "photon_to_first_token_ms": null,
+    "photon_to_answer_ms": null,
+    "vlm_calls": 0,
+    "vlm_calls_per_min": 0.0,
+    "answer_staleness_ms": null,
+    "accuracy_vs_oracle": null,
+    "false_trigger_rate": null,
+    "trigger_count": null,
+    "power": {
+      "available": true,
+      "error": null,
+      "driver": "592.01",
+      "power_limit_w": 95.0,
+      "baseline_power_w": 3.759,
+      "n_samples": 227,
+      "sample_hz": 10.0,
+      "mean_w": 25.721,
+      "peak_w": 79.554,
+      "energy_j": 662.611,
+      "energy_marginal_j": 560.911,
+      "energy_per_query_j": null,
+      "energy_marginal_per_query_j": null,
+      "mean_util_pct": 13.3,
+      "peak_temp_c": 58,
+      "series": [
+        [
+          35339.522117,
+          4.282,
+          451174400,
+          0
+        ],
+        [
+          35339.631193,
+          4.282,
+          451174400,
+          0
+        ],
+        [
+          35339.749478,
+          4.282,
+          451174400,
+          0
+        ],
+        [
+          35339.850553,
+          4.282,
+          451174400,
+          0
+        ],
+        [
+          35339.961669,
+          4.366,
+          451174400,
+          0
+        ],
+        [
+          35340.084429,
+          4.366,
+          451174400,
+          0
+        ],
+        [
+          35340.195471,
+          4.366,
+          451174400,
+          0
+        ],
+        [
+          35340.306417,
+          4.366,
+          451174400,
+          0
+        ],
+        [
+          35340.416966,
+          4.366,
+          451174400,
+          0
+        ],
+        [
+          35340.52814,
+          4.366,
+          451174400,
+          0
+        ],
+        [
+          35340.64003,
+          4.366,
+          451174400,
+          0
+        ],
+        [
+          35340.751092,
+          4.366,
+          451174400,
+          0
+        ],
+        [
+          35340.861559,
+          4.366,
+          451174400,
+          0
+        ],
+        [
+          35340.97375,
+          3.685,
+          451174400,
+          0
+        ],
+        [
+          35341.083374,
+          3.685,
+          451174400,
+          0
+        ],
+        [
+          35341.192335,
+          3.685,
+          451174400,
+          0
+        ],
+        [
+          35341.301044,
+          3.685,
+          451174400,
+          0
+        ],
+        [
+          35341.410272,
+          3.685,
+          477491200,
+          0
+        ],
+        [
+          35341.51879,
+          3.805,
+          670429184,
+          9
+        ],
+        [
+          35341.629792,
+          3.805,
+          670429184,
+          9
+        ],
+        [
+          35341.738057,
+          3.805,
+          670429184,
+          9
+        ],
+        [
+          35341.850062,
+          3.805,
+          670429184,
+          9
+        ],
+        [
+          35341.960377,
+          7.236,
+          670429184,
+          0
+        ],
+        [
+          35342.07034,
+          7.236,
+          670429184,
+          0
+        ],
+        [
+          35342.181535,
+          7.236,
+          670429184,
+          0
+        ],
+        [
+          35342.292582,
+          7.236,
+          670429184,
+          0
+        ],
+        [
+          35342.40461,
+          7.236,
+          670429184,
+          0
+        ],
+        [
+          35342.515551,
+          10.736,
+          672526336,
+          0
+        ],
+        [
+          35342.627613,
+          10.736,
+          672526336,
+          0
+        ],
+        [
+          35342.739627,
+          10.736,
+          672526336,
+          0
+        ],
+        [
+          35342.850709,
+          10.736,
+          672526336,
+          0
+        ],
+        [
+          35342.962585,
+          10.049,
+          672526336,
+          1
+        ],
+        [
+          35343.07256,
+          10.049,
+          672526336,
+          1
+        ],
+        [
+          35343.184456,
+          10.049,
+          672526336,
+          1
+        ],
+        [
+          35343.296491,
+          10.049,
+          672526336,
+          1
+        ],
+        [
+          35343.408428,
+          10.049,
+          672526336,
+          1
+        ],
+        [
+          35343.517723,
+          10.115,
+          672526336,
+          1
+        ],
+        [
+          35343.628818,
+          10.115,
+          672526336,
+          1
+        ],
+        [
+          35343.738355,
+          10.115,
+          672526336,
+          1
+        ],
+        [
+          35343.850291,
+          10.115,
+          672526336,
+          1
+        ],
+        [
+          35343.960104,
+          11.266,
+          672526336,
+          9
+        ],
+        [
+          35344.068541,
+          11.266,
+          672526336,
+          9
+        ],
+        [
+          35344.178162,
+          11.266,
+          672526336,
+          9
+        ],
+        [
+          35344.289128,
+          11.266,
+          672526336,
+          9
+        ],
+        [
+          35344.399012,
+          11.266,
+          672526336,
+          9
+        ],
+        [
+          35344.509274,
+          20.722,
+          672526336,
+          14
+        ],
+        [
+          35344.620358,
+          20.722,
+          672526336,
+          14
+        ],
+        [
+          35344.731163,
+          20.722,
+          672526336,
+          14
+        ],
+        [
+          35344.840542,
+          20.722,
+          672526336,
+          14
+        ],
+        [
+          35344.951529,
+          30.164,
+          672526336,
+          15
+        ],
+        [
+          35345.062599,
+          30.164,
+          672526336,
+          15
+        ],
+        [
+          35345.173484,
+          30.164,
+          672526336,
+          15
+        ],
+        [
+          35345.285519,
+          30.164,
+          672526336,
+          15
+        ],
+        [
+          35345.395992,
+          30.164,
+          672526336,
+          15
+        ],
+        [
+          35345.506199,
+          30.588,
+          672526336,
+          14
+        ],
+        [
+          35345.617207,
+          30.588,
+          672526336,
+          14
+        ],
+        [
+          35345.725441,
+          30.588,
+          672526336,
+          14
+        ],
+        [
+          35345.83613,
+          30.588,
+          672526336,
+          14
+        ],
+        [
+          35345.94704,
+          30.588,
+          672526336,
+          14
+        ],
+        [
+          35346.056528,
+          30.243,
+          672526336,
+          15
+        ],
+        [
+          35346.163791,
+          30.243,
+          672526336,
+          15
+        ],
+        [
+          35346.273348,
+          30.243,
+          672526336,
+          15
+        ],
+        [
+          35346.382422,
+          30.243,
+          672526336,
+          15
+        ],
+        [
+          35346.505454,
+          22.937,
+          672526336,
+          0
+        ],
+        [
+          35346.620022,
+          22.937,
+          672526336,
+          0
+        ],
+        [
+          35346.759543,
+          22.937,
+          691400704,
+          0
+        ],
+        [
+          35346.85964,
+          22.937,
+          708177920,
+          0
+        ],
+        [
+          35346.969827,
+          11.961,
+          708177920,
+          1
+        ],
+        [
+          35347.080112,
+          11.961,
+          708177920,
+          1
+        ],
+        [
+          35347.192096,
+          11.961,
+          708177920,
+          1
+        ],
+        [
+          35347.301091,
+          11.961,
+          708177920,
+          1
+        ],
+        [
+          35347.412161,
+          11.961,
+          708177920,
+          1
+        ],
+        [
+          35347.523255,
+          29.474,
+          708177920,
+          20
+        ],
+        [
+          35347.633049,
+          29.474,
+          708177920,
+          20
+        ],
+        [
+          35347.742322,
+          29.474,
+          708177920,
+          20
+        ],
+        [
+          35347.851322,
+          29.474,
+          708177920,
+          20
+        ],
+        [
+          35347.9614,
+          29.25,
+          708177920,
+          21
+        ],
+        [
+          35348.070456,
+          29.25,
+          708177920,
+          21
+        ],
+        [
+          35348.178296,
+          29.25,
+          708177920,
+          21
+        ],
+        [
+          35348.288329,
+          29.25,
+          708177920,
+          21
+        ],
+        [
+          35348.395395,
+          29.25,
+          674623488,
+          21
+        ],
+        [
+          35348.504135,
+          31.948,
+          674623488,
+          20
+        ],
+        [
+          35348.613681,
+          31.948,
+          674623488,
+          20
+        ],
+        [
+          35348.725206,
+          31.948,
+          674623488,
+          20
+        ],
+        [
+          35348.834863,
+          31.948,
+          720760832,
+          20
+        ],
+        [
+          35348.945818,
+          31.948,
+          720760832,
+          20
+        ],
+        [
+          35349.056083,
+          31.44,
+          720760832,
+          46
+        ],
+        [
+          35349.166282,
+          31.44,
+          720760832,
+          46
+        ],
+        [
+          35349.275311,
+          31.44,
+          720760832,
+          46
+        ],
+        [
+          35349.384307,
+          31.44,
+          720760832,
+          46
+        ],
+        [
+          35349.494298,
+          47.71,
+          720760832,
+          62
+        ],
+        [
+          35349.603369,
+          47.71,
+          720760832,
+          62
+        ],
+        [
+          35349.712229,
+          47.71,
+          720760832,
+          62
+        ],
+        [
+          35349.820321,
+          47.71,
+          720760832,
+          62
+        ],
+        [
+          35349.931111,
+          47.71,
+          720760832,
+          62
+        ],
+        [
+          35350.039844,
+          47.679,
+          720760832,
+          24
+        ],
+        [
+          35350.149892,
+          47.679,
+          720760832,
+          24
+        ],
+        [
+          35350.257402,
+          47.679,
+          720760832,
+          24
+        ],
+        [
+          35350.367263,
+          47.679,
+          720760832,
+          24
+        ],
+        [
+          35350.475527,
+          56.593,
+          720760832,
+          32
+        ],
+        [
+          35350.583835,
+          56.593,
+          720760832,
+          32
+        ],
+        [
+          35350.691825,
+          56.593,
+          720760832,
+          32
+        ],
+        [
+          35350.803028,
+          56.593,
+          720760832,
+          32
+        ],
+        [
+          35350.91302,
+          56.593,
+          720760832,
+          32
+        ],
+        [
+          35351.024981,
+          45.85,
+          720760832,
+          0
+        ],
+        [
+          35351.137728,
+          45.85,
+          720760832,
+          0
+        ],
+        [
+          35351.249059,
+          45.85,
+          720760832,
+          0
+        ],
+        [
+          35351.365246,
+          45.85,
+          720760832,
+          0
+        ],
+        [
+          35351.597915,
+          9.28,
+          720760832,
+          0
+        ],
+        [
+          35351.764288,
+          9.28,
+          720760832,
+          0
+        ],
+        [
+          35351.995761,
+          9.167,
+          863367168,
+          0
+        ],
+        [
+          35352.100575,
+          9.167,
+          871755776,
+          0
+        ],
+        [
+          35352.213109,
+          9.167,
+          871755776,
+          0
+        ],
+        [
+          35352.322588,
+          9.167,
+          871755776,
+          0
+        ],
+        [
+          35352.434662,
+          9.167,
+          871755776,
+          0
+        ],
+        [
+          35352.545678,
+          9.35,
+          871755776,
+          0
+        ],
+        [
+          35352.657681,
+          9.35,
+          871755776,
+          0
+        ],
+        [
+          35352.767943,
+          9.35,
+          871755776,
+          0
+        ],
+        [
+          35352.875786,
+          9.35,
+          871755776,
+          0
+        ],
+        [
+          35352.986249,
+          9.34,
+          871755776,
+          0
+        ],
+        [
+          35353.096418,
+          9.34,
+          871755776,
+          0
+        ],
+        [
+          35353.206299,
+          9.34,
+          871755776,
+          0
+        ],
+        [
+          35353.318291,
+          9.34,
+          871755776,
+          0
+        ],
+        [
+          35353.42933,
+          9.34,
+          871755776,
+          0
+        ],
+        [
+          35353.539654,
+          9.237,
+          871755776,
+          0
+        ],
+        [
+          35353.650777,
+          9.237,
+          871755776,
+          0
+        ],
+        [
+          35353.761477,
+          9.237,
+          871755776,
+          0
+        ],
+        [
+          35353.872432,
+          9.237,
+          871755776,
+          0
+        ],
+        [
+          35353.98431,
+          11.437,
+          871755776,
+          0
+        ],
+        [
+          35354.09359,
+          11.437,
+          871755776,
+          0
+        ],
+        [
+          35354.205472,
+          11.437,
+          871755776,
+          0
+        ],
+        [
+          35354.316561,
+          11.437,
+          871755776,
+          0
+        ],
+        [
+          35354.426602,
+          11.437,
+          871755776,
+          0
+        ],
+        [
+          35354.536791,
+          9.636,
+          871755776,
+          0
+        ],
+        [
+          35354.648779,
+          9.636,
+          871755776,
+          0
+        ],
+        [
+          35354.760146,
+          9.636,
+          871755776,
+          0
+        ],
+        [
+          35354.870746,
+          9.636,
+          871755776,
+          0
+        ],
+        [
+          35354.981013,
+          9.636,
+          871755776,
+          0
+        ],
+        [
+          35355.089299,
+          9.636,
+          871755776,
+          0
+        ],
+        [
+          35355.19925,
+          9.636,
+          871755776,
+          0
+        ],
+        [
+          35355.308385,
+          9.636,
+          871755776,
+          0
+        ],
+        [
+          35355.418723,
+          9.636,
+          871755776,
+          0
+        ],
+        [
+          35355.528242,
+          8.656,
+          871755776,
+          2
+        ],
+        [
+          35355.639823,
+          8.656,
+          871755776,
+          2
+        ],
+        [
+          35355.75074,
+          8.656,
+          871755776,
+          2
+        ],
+        [
+          35355.862726,
+          8.656,
+          871755776,
+          2
+        ],
+        [
+          35355.973439,
+          8.083,
+          871755776,
+          0
+        ],
+        [
+          35356.083418,
+          8.083,
+          871755776,
+          0
+        ],
+        [
+          35356.195332,
+          8.083,
+          871755776,
+          0
+        ],
+        [
+          35356.306515,
+          8.083,
+          871755776,
+          0
+        ],
+        [
+          35356.417632,
+          8.083,
+          871755776,
+          0
+        ],
+        [
+          35356.528168,
+          6.446,
+          871755776,
+          0
+        ],
+        [
+          35356.639156,
+          6.446,
+          871755776,
+          0
+        ],
+        [
+          35356.7485,
+          6.446,
+          871755776,
+          0
+        ],
+        [
+          35356.859561,
+          6.446,
+          871755776,
+          0
+        ],
+        [
+          35356.96636,
+          22.295,
+          871755776,
+          44
+        ],
+        [
+          35357.074681,
+          22.295,
+          871755776,
+          44
+        ],
+        [
+          35357.183486,
+          22.295,
+          871755776,
+          44
+        ],
+        [
+          35357.292035,
+          22.295,
+          871755776,
+          44
+        ],
+        [
+          35357.40097,
+          22.295,
+          871755776,
+          44
+        ],
+        [
+          35357.509927,
+          55.288,
+          871755776,
+          45
+        ],
+        [
+          35357.620914,
+          55.288,
+          871755776,
+          45
+        ],
+        [
+          35357.730915,
+          55.288,
+          871755776,
+          45
+        ],
+        [
+          35357.836971,
+          55.288,
+          871755776,
+          45
+        ],
+        [
+          35357.946931,
+          55.288,
+          871755776,
+          45
+        ],
+        [
+          35358.05484,
+          79.554,
+          871755776,
+          43
+        ],
+        [
+          35358.162932,
+          79.554,
+          871755776,
+          43
+        ],
+        [
+          35358.274318,
+          79.554,
+          720760832,
+          43
+        ],
+        [
+          35358.385351,
+          79.554,
+          720760832,
+          43
+        ],
+        [
+          35358.495368,
+          71.633,
+          720760832,
+          0
+        ],
+        [
+          35358.60739,
+          71.633,
+          720760832,
+          0
+        ],
+        [
+          35358.717468,
+          71.633,
+          720760832,
+          0
+        ],
+        [
+          35358.828929,
+          71.633,
+          720760832,
+          0
+        ],
+        [
+          35358.940196,
+          71.633,
+          720760832,
+          0
+        ],
+        [
+          35359.047914,
+          36.385,
+          720760832,
+          0
+        ],
+        [
+          35359.15679,
+          36.385,
+          720760832,
+          0
+        ],
+        [
+          35359.267857,
+          36.385,
+          720760832,
+          0
+        ],
+        [
+          35359.377366,
+          36.385,
+          720760832,
+          0
+        ],
+        [
+          35359.488505,
+          10.966,
+          825618432,
+          0
+        ],
+        [
+          35359.59955,
+          10.966,
+          888532992,
+          0
+        ],
+        [
+          35359.709642,
+          10.966,
+          888532992,
+          0
+        ],
+        [
+          35359.817741,
+          10.966,
+          888532992,
+          0
+        ],
+        [
+          35359.927331,
+          10.966,
+          888532992,
+          0
+        ],
+        [
+          35360.035276,
+          51.571,
+          888532992,
+          39
+        ],
+        [
+          35360.141452,
+          51.571,
+          888532992,
+          39
+        ],
+        [
+          35360.25064,
+          51.571,
+          888532992,
+          39
+        ],
+        [
+          35360.360637,
+          51.571,
+          888532992,
+          39
+        ],
+        [
+          35360.469568,
+          46.675,
+          888532992,
+          27
+        ],
+        [
+          35360.578122,
+          46.675,
+          888532992,
+          27
+        ],
+        [
+          35360.687353,
+          46.675,
+          888532992,
+          27
+        ],
+        [
+          35360.796801,
+          46.675,
+          888532992,
+          27
+        ],
+        [
+          35360.906926,
+          46.675,
+          888532992,
+          27
+        ],
+        [
+          35361.015625,
+          44.158,
+          888532992,
+          27
+        ],
+        [
+          35361.126733,
+          44.158,
+          888532992,
+          27
+        ],
+        [
+          35361.236815,
+          44.158,
+          888532992,
+          27
+        ],
+        [
+          35361.345164,
+          44.158,
+          888532992,
+          27
+        ],
+        [
+          35361.454494,
+          42.75,
+          888532992,
+          20
+        ],
+        [
+          35361.565648,
+          42.75,
+          888532992,
+          20
+        ],
+        [
+          35361.676683,
+          42.75,
+          888532992,
+          20
+        ],
+        [
+          35361.786656,
+          42.75,
+          888532992,
+          20
+        ],
+        [
+          35361.898653,
+          42.75,
+          888532992,
+          20
+        ],
+        [
+          35362.0084,
+          20.082,
+          888532992,
+          0
+        ],
+        [
+          35362.117725,
+          20.082,
+          888532992,
+          0
+        ],
+        [
+          35362.22619,
+          20.082,
+          888532992,
+          0
+        ],
+        [
+          35362.337265,
+          20.082,
+          888532992,
+          0
+        ],
+        [
+          35362.448127,
+          20.082,
+          888532992,
+          0
+        ],
+        [
+          35362.561584,
+          11.538,
+          888532992,
+          0
+        ],
+        [
+          35363.574743,
+          10.165,
+          888532992,
+          0
+        ],
+        [
+          35364.203734,
+          9.377,
+          888532992,
+          0
+        ],
+        [
+          35364.318732,
+          9.377,
+          888532992,
+          0
+        ],
+        [
+          35364.429725,
+          9.377,
+          888532992,
+          0
+        ],
+        [
+          35364.943416,
+          9.466,
+          1433792512,
+          0
+        ],
+        [
+          35365.058531,
+          9.309,
+          1442181120,
+          0
+        ],
+        [
+          35365.168102,
+          9.309,
+          1442181120,
+          0
+        ],
+        [
+          35365.278979,
+          9.309,
+          1442181120,
+          0
+        ],
+        [
+          35365.386002,
+          9.309,
+          1442181120,
+          0
+        ],
+        [
+          35365.496135,
+          63.022,
+          1442181120,
+          47
+        ],
+        [
+          35365.605119,
+          63.022,
+          1442181120,
+          47
+        ],
+        [
+          35365.712834,
+          63.022,
+          1442181120,
+          47
+        ],
+        [
+          35365.821765,
+          63.022,
+          1442181120,
+          47
+        ],
+        [
+          35365.931611,
+          63.022,
+          1442181120,
+          47
+        ],
+        [
+          35366.041612,
+          65.127,
+          1442181120,
+          45
+        ],
+        [
+          35366.151816,
+          65.127,
+          1442181120,
+          45
+        ],
+        [
+          35366.260751,
+          65.127,
+          1442181120,
+          45
+        ],
+        [
+          35366.369975,
+          65.127,
+          1442181120,
+          45
+        ],
+        [
+          35366.478976,
+          60.3,
+          1442181120,
+          42
+        ],
+        [
+          35366.588034,
+          60.3,
+          1442181120,
+          42
+        ]
+      ],
+      "series_columns": [
+        "t_monotonic",
+        "power_w",
+        "mem_used_b",
+        "util_gpu_pct"
+      ]
+    },
+    "vram": {
+      "available": true,
+      "peak_used_gb": 1.343,
+      "mean_used_gb": 0.746,
+      "note": "NVML board-wide usage, includes other processes \u2014 not our allocation alone"
+    }
+  },
+  "extra": {
+    "encoder_bench": {
+      "candidates": [
+        {
+          "label": "downsample32 (control, no network)",
+          "name": "downsample32",
+          "dim": 1024,
+          "input_size": 32,
+          "p50_ms": 0.157,
+          "p95_ms": 0.169,
+          "p99_ms": 0.242,
+          "mean_ms": 0.162,
+          "max_fps": 6357.3,
+          "n_reps": 200,
+          "d_lighting_median": 0.00354,
+          "d_motion_median": 0.16251,
+          "d_semantic_median": 0.06893,
+          "discrimination": 19.452,
+          "semantic_vs_motion": 0.424,
+          "n_pairs": 23
+        },
+        {
+          "label": "mobilenetv3_small@224 torch fp16",
+          "name": "mobilenetv3_small_100@224-fp16-torch",
+          "dim": 1024,
+          "input_size": 224,
+          "backend": "torch",
+          "model": "mobilenetv3_small_100",
+          "dtype": "fp16",
+          "device": "cuda",
+          "params_m": 1.52,
+          "p50_ms": 5.615,
+          "p95_ms": 6.166,
+          "p99_ms": 6.826,
+          "mean_ms": 5.673,
+          "max_fps": 178.1,
+          "n_reps": 200,
+          "d_lighting_median": 0.03213,
+          "d_motion_median": 0.08722,
+          "d_semantic_median": 0.40003,
+          "discrimination": 12.45,
+          "semantic_vs_motion": 4.587,
+          "n_pairs": 23
+        },
+        {
+          "label": "mobilenetv3_small@224 onnx",
+          "name": "mobilenetv3_small_100@224-onnx",
+          "dim": 1024,
+          "input_size": 224,
+          "backend": "onnx",
+          "path": "models\\onnx\\mobilenetv3_small_100_224.onnx",
+          "providers": [
+            "CUDAExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "p50_ms": 3.32,
+          "p95_ms": 4.082,
+          "p99_ms": 6.475,
+          "mean_ms": 3.39,
+          "max_fps": 301.2,
+          "n_reps": 200,
+          "d_lighting_median": 0.03206,
+          "d_motion_median": 0.08669,
+          "d_semantic_median": 0.40002,
+          "discrimination": 12.478,
+          "semantic_vs_motion": 4.614,
+          "n_pairs": 23
+        },
+        {
+          "label": "dinov2_vits14@224 torch fp16",
+          "name": "vit_small_patch14_dinov2.lvd142m@224-fp16-torch",
+          "dim": 384,
+          "input_size": 224,
+          "backend": "torch",
+          "model": "vit_small_patch14_dinov2.lvd142m",
+          "dtype": "fp16",
+          "device": "cuda",
+          "params_m": 21.63,
+          "p50_ms": 5.209,
+          "p95_ms": 5.557,
+          "p99_ms": 7.015,
+          "mean_ms": 5.241,
+          "max_fps": 192.0,
+          "n_reps": 200,
+          "d_lighting_median": 0.01473,
+          "d_motion_median": 0.07795,
+          "d_semantic_median": 0.23284,
+          "discrimination": 15.812,
+          "semantic_vs_motion": 2.987,
+          "n_pairs": 23
+        },
+        {
+          "label": "dinov2_vits14@224 onnx",
+          "name": "vit_small_patch14_dinov2.lvd142m@224-onnx",
+          "dim": 384,
+          "input_size": 224,
+          "backend": "onnx",
+          "path": "models\\onnx\\vit_small_patch14_dinov2_lvd142m_224.onnx",
+          "providers": [
+            "CUDAExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "p50_ms": 4.195,
+          "p95_ms": 4.521,
+          "p99_ms": 4.958,
+          "mean_ms": 4.222,
+          "max_fps": 238.4,
+          "n_reps": 200,
+          "d_lighting_median": 0.01469,
+          "d_motion_median": 0.07774,
+          "d_semantic_median": 0.23272,
+          "discrimination": 15.838,
+          "semantic_vs_motion": 2.994,
+          "n_pairs": 23
+        },
+        {
+          "label": "clip_vitb32@224 torch fp16",
+          "name": "vit_base_patch32_clip_224.openai@224-fp16-torch",
+          "dim": 768,
+          "input_size": 224,
+          "backend": "torch",
+          "model": "vit_base_patch32_clip_224.openai",
+          "dtype": "fp16",
+          "device": "cuda",
+          "params_m": 87.46,
+          "p50_ms": 4.725,
+          "p95_ms": 5.882,
+          "p99_ms": 7.78,
+          "mean_ms": 4.532,
+          "max_fps": 211.6,
+          "n_reps": 200,
+          "d_lighting_median": 0.07252,
+          "d_motion_median": 0.11652,
+          "d_semantic_median": 0.32337,
+          "discrimination": 4.459,
+          "semantic_vs_motion": 2.775,
+          "n_pairs": 23
+        },
+        {
+          "label": "clip_vitb32@224 onnx",
+          "name": "vit_base_patch32_clip_224.openai@224-onnx",
+          "dim": 768,
+          "input_size": 224,
+          "backend": "onnx",
+          "path": "models\\onnx\\vit_base_patch32_clip_224_openai_224.onnx",
+          "providers": [
+            "CUDAExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "p50_ms": 4.23,
+          "p95_ms": 5.443,
+          "p99_ms": 8.011,
+          "mean_ms": 4.382,
+          "max_fps": 236.4,
+          "n_reps": 200,
+          "d_lighting_median": 0.07239,
+          "d_motion_median": 0.1168,
+          "d_semantic_median": 0.3238,
+          "discrimination": 4.473,
+          "semantic_vs_motion": 2.772,
+          "n_pairs": 23
+        }
+      ],
+      "quality_definition": {
+        "lighting": "gamma 0.6/1.6 and brightness +/-40 on the same frame",
+        "motion": "consecutive frames from the clip",
+        "semantic": "synthetic opaque object occluding ~12% of the frame",
+        "discrimination": "d_semantic_median / d_lighting_median; higher is better, a pure motion detector scores ~1"
+      },
+      "n_candidates": 7,
+      "n_failed": 0
+    }
+  },
+  "events": {
+    "counts": {
+      "frames": 0,
+      "drops": 0,
+      "triggers": 0,
+      "vlm_calls": 0,
+      "answers": 0,
+      "accuracy_records": 0,
+      "truncated": false
+    },
+    "kept": true,
+    "drops": [],
+    "triggers": [],
+    "answers": [],
+    "vlm_calls": []
+  }
+}
