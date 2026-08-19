@@ -140,11 +140,25 @@ python -m venv .venv
 .venv/Scripts/python.exe -m pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu128
 ```
 
-Then fetch the llama.cpp Windows CUDA build and a GGUF model — the `win-cuda-13.3` asset, **not
-12.4**: this GPU is sm_120 and CUDA 12.4 predates Blackwell.
+Then fetch the pinned llama.cpp build and the chosen model (~5.4 GB). The script is idempotent and
+verifies what it fetched:
+
+```bash
+.venv/Scripts/python.exe scripts/fetch_assets.py
+```
+
+It pins the `win-cuda-13.3` asset, **not 12.4** — this GPU is sm_120 and CUDA 12.4 predates
+Blackwell — and pins the release tag, because a floating `latest` would change the binary underneath
+a set of published measurements. `--check` verifies an existing setup without downloading anything.
 
 ```bash
 .venv/Scripts/python.exe -m pytest tests/ -q
+```
+
+Tests needing a GPU, a camera or model weights are marked and skip cleanly without them:
+
+```bash
+.venv/Scripts/python.exe -m pytest tests/ -q -m "not gpu and not webcam and not vlm and not slow"
 ```
 
 ### The live demo
