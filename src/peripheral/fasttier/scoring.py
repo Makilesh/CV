@@ -144,7 +144,11 @@ class FastTier:
         )
         novelty = self.reference.distance(emb)
 
-        self.reference.update(emb, frame.t_capture)
+        # STREAM time, not capture time. The reference half-life is in seconds, so using the moment
+        # we happened to read the frame makes novelty depend on how fast the consumer runs — during
+        # Phase 4 trace building the VLM took ~500 ms/frame and novelty came out ~4x too small.
+        # See Frame.t_presentation.
+        self.reference.update(emb, frame.t_stream)
         self._prev_emb = emb
 
         scores = FrameScores(

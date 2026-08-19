@@ -186,7 +186,8 @@ class ReplaySource(FrameSource):
             self.stats.frames_late += 1
         self.stats.max_lateness_ms = max(self.stats.max_lateness_ms, lateness_ms)
 
-        frame = Frame(frame_id=self._next_index, t_capture=t_capture, image=image)
+        frame = Frame(frame_id=self._next_index, t_capture=t_capture, image=image,
+                      t_presentation=due)
         self._next_index += 1
         self.stats.frames_delivered += 1
         return frame
@@ -216,7 +217,8 @@ class ReplaySource(FrameSource):
         self._cap.set(cv2.CAP_PROP_POS_FRAMES, pos)
         if not ok:
             raise IndexError(f"frame {index} could not be decoded")
-        return Frame(frame_id=index, t_capture=now(), image=image)
+        return Frame(frame_id=index, t_capture=now(), image=image,
+                     t_presentation=self.due_time(index))
 
     def audit(self) -> dict[str, Any]:
         """Post-hoc check: did the source ever deliver more frames than wall clock allowed?"""

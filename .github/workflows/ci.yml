@@ -1,0 +1,87 @@
+name: CI
+
+# CPU-ONLY. This gates CORRECTNESS, NOT PERFORMANCE.
+#
+# Every number in RESULTS.md comes from one machine: an RTX 5070 Ti Laptop at a 95 W cap, with a
+# specific driver and llama.cpp build. A GitHub runner cannot reproduce them and must not appear to.
+# What CI can do is prove the invariants still hold: that the replay harness refuses future frames,
+# that the scheduler policies decide what they claim to, that the metrics schema is enforced, and
+# that unmeasured values serialise as null rather than zero.
+#
+# Tests needing a GPU, a camera, model weights, or wall-clock patience are excluded by marker and
+# are the developer's responsibility to run locally.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  correctness:
+    name: correctness gate (CPU only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install CPU-only dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r docker/requirements-eval.txt \
+            --extra-index-url https://download.pytorch.org/whl/cpu
+
+      - name: Show what is being gated
+        run: |
+          echo "CPU-only. Gating correctness, not performance."
+          echo "Excluded markers: gpu, webcam, vlm, slow"
+          python -c "import torch, cv2, numpy; print('torch', torch.__version__, '| cv2', cv2.__version__)"
+
+      - name: Correctness suite
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          pytest tests/ -q -m "not gpu and not webcam and not vlm and not slow" --durations=10
+
+      # The anti-cheat suite is the reason this project can claim to measure streaming at all, so it
+      # runs as its own step: a failure here must be unmissable in the log, not buried in a summary.
+      - name: No-future-frames invariant (anti-cheat)
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          pytest tests/test_phase6.py -q -m "not gpu and not webcam and not vlm and not slow" -v
+
+      # A bounded run end to end on a synthetic source: no camera, no GPU, no weights. Proves the
+      # --duration/--headless/--metrics-out contract still holds and emits a schema-valid file.
+      - name: Bounded replay smoke run
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          python -m peripheral.cli.smoke --duration 5 --headless \
+            --metrics-out results/ci_smoke.json -o capture=synthetic -o fasttier=ci
+          python - <<'PY'
+          import json
+          from peripheral.telemetry.schema import validate_metrics
+          doc = json.load(open("results/ci_smoke.json"))
+          validate_metrics(doc)
+          m = doc["metrics"]
+          assert doc["run"]["status"] == "completed", doc["run"]
+          assert m["frames_captured"] > 100, m["frames_captured"]
+          # No VLM ran, so its metric families must be null -- not zero.
+          assert m["photon_to_first_token_ms"] is None
+          assert m["vlm_calls"] == 0
+          print(f"ok: {m['frames_captured']} frames, {m['achieved_fps']} FPS, schema valid")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ci-metrics
+          path: results/*.json
+          if-no-files-found: ignore

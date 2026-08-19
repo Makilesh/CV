@@ -181,37 +181,68 @@ def test_the_sweep_explored_thresholds_where_the_cache_actually_fires():
     )
 
 
-def test_no_threshold_gives_benefit_without_cost():
-    """The finding this phase turns on, asserted rather than described."""
-    rows = [r for r in _phase5()["rows"] if r["split"] == "held_out"]
+def _lossless_useful(rows: list[dict]) -> list[dict]:
+    """Cache settings that avoid calls at no cost in answer validity."""
     baseline = next(r for r in rows if r["cache_threshold"] is None)
-    useful_and_free = [
+    return [
         r for r in rows
         if r["cache_threshold"] is not None
         and r["calls_avoided_pct_mean"] > 0
         and r["answer_validity_mean"] >= baseline["answer_validity_mean"] - 1e-9
     ]
-    assert not useful_and_free, (
-        "a cache configuration DOES avoid calls at no accuracy cost — the Phase 5 recommendation "
-        f"should be revisited: {useful_and_free}"
+
+
+def test_the_verdict_matches_what_the_measurements_say():
+    """The verdict must follow the data, in whichever direction the data points.
+
+    This deliberately does NOT hardcode keep-or-cut. The recommendation reversed once already:
+    before the `t_presentation` timing fix the scheduler fired so rarely that no cache setting
+    helped, and the verdict was 'cut'. With corrected signals a lossless setting exists and it is
+    'keep'. A test that pinned the old answer would have had to be edited to accept the new data —
+    which is exactly backwards.
+    """
+    p5 = _phase5()
+    v = p5["verdict"]
+    rows = [r for r in p5["rows"] if r["split"] == "held_out"]
+    useful = _lossless_useful(rows)
+
+    assert v["recommendation"] in {"keep", "cut", "inconclusive"}
+    assert v["reason"], "a verdict without a reason is an opinion"
+
+    if v["recommendation"] == "keep":
+        assert useful, "verdict says keep, but no configuration avoids calls at zero validity cost"
+        best = max(useful, key=lambda r: r["calls_avoided_pct_mean"])
+        assert best["calls_avoided_pct_mean"] >= 10.0, (
+            "keeping a component that avoids <10% of calls is not worth the complexity"
+        )
+    else:
+        assert not useful, (
+            f"verdict says {v['recommendation']}, but these settings are free wins: "
+            f"{[(r['cache_threshold'], r['calls_avoided_pct_mean']) for r in useful]}"
+        )
+
+
+def test_a_recommended_setting_has_no_false_hits():
+    """A false hit is a confidently wrong answer at zero cost that the system cannot detect.
+
+    So the recommended operating point must sit at the zero-false-hit end of the curve, not at the
+    maximum-savings end.
+    """
+    p5 = _phase5()
+    if p5["verdict"]["recommendation"] != "keep":
+        pytest.skip("cache is not recommended, so there is no operating point to check")
+    rows = [r for r in p5["rows"] if r["split"] == "held_out"]
+    best = max(_lossless_useful(rows), key=lambda r: r["calls_avoided_pct_mean"])
+    assert best["false_hit_rate_mean"] in (0, 0.0), (
+        f"recommended threshold {best['cache_threshold']} has a non-zero false-hit rate"
     )
 
 
-def test_the_verdict_is_cut_and_is_explained():
-    v = _phase5()["verdict"]
-    assert v["recommendation"] in {"keep", "cut", "inconclusive"}
-    assert v["recommendation"] == "cut", "the measurements support cutting; if this changes, say so"
-    assert v["reason"], "a verdict without a reason is an opinion"
-    assert v["root_cause"], "the verdict must explain WHY, not just report that it failed"
-
-
-def test_the_root_cause_is_backed_by_a_measurement():
-    """The explanation rests on similarity available at trigger time — check it was measured."""
+def test_the_key_quality_diagnostic_was_measured():
+    """Whichever way the verdict goes, it must rest on measurements rather than on a story."""
     kq = _phase5()["key_quality"]
-    sat = kq["similarity_at_trigger"]
-    assert kq["mean_auc"] is not None
-    assert sat["median_best_similarity"] is not None
-    # The cache is asked at moments far less similar than the same/different separation band.
-    assert sat["median_best_similarity"] < min(
-        v["same_state_p10"] for v in kq["per_clip"].values()
-    ), "if trigger-time similarity were inside the separation band, the cache could work"
+    assert kq["mean_auc"] is not None, "cache-key discriminability was never measured"
+    assert kq["similarity_at_trigger"]["median_best_similarity"] is not None, (
+        "similarity available at trigger time was never measured — that is the number that decides "
+        "whether a cache can work at all"
+    )
