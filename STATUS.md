@@ -1,6 +1,6 @@
 # STATUS — where Peripheral is, and where it's going
 
-**Last updated:** 2026-08-08 · **Current phase:** 6 COMPLETE, awaiting confirmation · **Branch:** `phase1`
+**Last updated:** 2026-08-08 · **Current phase:** 7 COMPLETE — all phases done · **Branch:** `phase1`
 
 This file is the single place to look to answer "what is done, what is assumed, what is next."
 Update it at every phase boundary. `PROMPT.md` is the plan; `CLAUDE.md` is the operating manual.
@@ -46,10 +46,10 @@ Everything else is scaffolding for those two plots.
 | 1 | Async pipeline (threads + bounded queues + backpressure) & naive per-frame VLM baseline | capture ≥25 FPS with VLM stage saturated; `results/phase1_naive_baseline.png` | **✅ 77 passed · 30.4 FPS vs 10.2 calls/s · chart built** |
 | 2 | Fast tier: frame diff, small embedding encoder, scene-change + novelty scoring | sustained FPS over 30 s headless, per-stage timings in metrics JSON | **✅ 94 passed · 30.65 FPS live, 211 FPS unpaced · 4.55 ms/frame** |
 | 3 | Slow tier: 3–4 small VLMs × GGUF quant levels, KV reuse, streaming decode | comparison table in `RESULTS.md`; **p95 TTFT < 400 ms** test | **✅ 110 passed · 8/8 configs pass · p95 195 ms in-pipeline** |
-| 4 | **The scheduler** — pluggable trigger policies, swept against the oracle | `results/phase4_pareto.png`; ≥85% oracle accuracy at ≤20% oracle calls | **✅ 134 passed · 100% validity at 0.42% of oracle calls (held-out)** |
-| 5 | Semantic cache *(droppable)* | hit rate / staleness / accuracy-cost numbers in `RESULTS.md` | **✅ 150 passed · verdict: CUT, with evidence** |
+| 4 | **The scheduler** — pluggable trigger policies, swept against the oracle | `results/phase4_pareto.png`; ≥85% oracle accuracy at ≤20% oracle calls | **✅ 100% validity at 0.56% of oracle calls (held-out) — see §12 correction** |
+| 5 | Semantic cache *(droppable)* | hit rate / staleness / accuracy-cost numbers in `RESULTS.md` | **✅ verdict: KEEP (reversed after the timing fix) — 52.5% of calls, 0 false hits** |
 | 6 | Replay harness + benchmarks + ablations | complete `RESULTS.md`; **no-future-frames test passing** | **✅ 170 passed · Gate 3 caught a real bug · SB subset 0.714** |
-| 7 | Ship: GUI demo, CI, README, demo GIF | fresh clone reaches a working live demo | not started |
+| 7 | Ship: GUI demo, CI, README, demo GIF | fresh clone reaches a working live demo | **✅ 192 passed · demo 30.0 FPS · README + both figures + GIF** |
 
 **Protocol:** phases run strictly in order. Each ends with its test, a reported number, and a full
 stop awaiting confirmation. Tag at each boundary (`git tag phase-0-scaffold`).
@@ -235,6 +235,10 @@ Rejected approaches belong here with their reasons.
 | D30 | "Matched call budget" in ablations is **computed from the full system's measured rate** | A hardcoded 8 s interval gave the fixed-interval baseline 7.5 calls/min against the full system's 5.8 — 29% more calls, in the baseline's favour, in a comparison meant to be matched. | Hardcoding a plausible interval |
 | D31 | **OVO-Bench is reported as not run**; StreamingBench as an explicitly-labelled subset with its selection bias stated | OVO-Bench is 199.6 GB as a split tar that cannot be partially extracted, against 130 GB free — there is no honest partial route. StreamingBench costs 377 min of wall-clock replay for one shard, so a budgeted shortest-clips-first subset is used and labelled as such, including that the bias *favours* us. | Quoting a subset as a benchmark score, or silently substituting a cheaper proxy |
 | D32 | `replay_speed` is written into every metrics file, and a test asserts the config default is 1.0 | Faster-than-realtime replay is needed for tests but would invalidate any measured result. Recording it means a fast replay cannot be mistaken for a real one after the fact. | Trusting that nobody changes the speed |
+| D33 | `Frame` carries **`t_presentation` separately from `t_capture`**, and all time-constant signal processing uses the former | They are not the same thing and conflating them was a real bug: during trace building the VLM took ~500 ms/frame, so frames looked 500 ms apart when they were 33 ms apart in the video, and the rolling reference's seconds-based half-life under-scaled novelty 3–4×. Latency needs capture time; signals need stream time. | One timestamp for both — the obvious design, and it silently inverted the Phase 4 policy ranking |
+| D34 | The demo runs inference on a **worker thread and skips** triggers while busy, rather than queueing | Inline inference dropped capture to 7.6 FPS, breaking invariant 7 in a new runner after the Phase 1 pipeline had honoured it. Skipping beats queueing because a backlog only yields answers about frames that are already stale. | Queueing triggers — smoother-looking call rate, staler answers, and capture still blocked |
+| D35 | **No demo container**, and the Docker split is documented with reasons in both the Dockerfile and the README | Webcam passthrough into WSL2 needs usbipd-win plus a v4l2 shim, after which `CAP_DSHOW` — chosen on measured jitter — does not exist; and the numbers depend on a specific CUDA build and a 95 W cap. A container that appeared to reproduce them on other hardware would be worse than none. | Shipping a `docker compose up` that half-works |
+| D36 | The README carries **"what was not established" above the fold**, and a test asserts it stays in the first half | It is the section most likely to drift downward over time, and it contains the all-clips reversal and the 7-of-500 benchmark subset. A footnote would be an overclaim by omission. | Leading with the headline alone |
 
 ---
 
@@ -523,7 +527,56 @@ single-threaded design is what makes the timing auditable line by line.
 
 ---
 
-## 15. Next action
+## 15. Phase 7 results — shipped, and a third bug found on the way
+
+`pytest tests/ -q` → **192 passed**.
+
+| deliverable | state |
+|---|---|
+| Live webcam GUI + HUD, **native Windows** | `peripheral.cli.demo` — 30.0 FPS capture, HUD shows calls/min, novelty vs threshold, trigger markers, answer staleness |
+| Demo GIF | `results/demo.gif` (9.3 MB) — object appears → novelty spike → VLM fires → answer updates, real HUD from a real run |
+| Both Pareto figures | `results/phase4_pareto.png` + `results/pareto_latency.png` (figure 2, new) |
+| Docker, **eval path only** | `docker/` — CPU-only, no demo service, split documented with reasons |
+| GitHub Actions CI | `.github/workflows/ci.yml` — CPU-only, anti-cheat suite as its own step, bounded smoke run with schema validation |
+| README | claim at top, both figures above the fold, **non-claims above the fold**, hardware + plugged-in caveat, honest prior art |
+
+### ⚠️ The third bug: the demo violated invariant 7
+
+The first demo build ran the VLM call inline and measured **7.6 FPS** — a ~500 ms call was stalling
+capture, which is exactly the invariant the whole pipeline design exists to protect (*the capture
+thread never blocks on inference*). Fixed with a single inference worker thread: a trigger while the
+worker is busy is **skipped**, not queued, because a backlog only produces answers about frames that
+are already stale. Capture returned to **30.0 FPS**.
+
+Worth noting the pattern: the invariant was honoured in the Phase 1 threaded pipeline and then
+quietly broken in a new single-threaded runner. It is a design rule, not a property of the code.
+
+### And the second one, found here: `t_presentation`
+
+Investigating the demo's call rate exposed the timing bug documented in `RESULTS.md` §4 — the fast
+tier's rolling reference keyed off read time rather than stream time, under-scaling novelty 3–4×.
+**Everything trace-derived in Phases 4, 5 and 6 was recomputed.** Two conclusions reversed:
+
+- the policy ranking (`embedding_novelty` is now the *worst* content policy, not the best);
+- the cache verdict (**CUT → KEEP**, 52.5% of calls at zero false hits).
+
+The corrected story is less flattering and is reported as such in `RESULTS.md` §7: the *savings* are
+real, but the claim that embedding novelty specifically delivers them is not supported.
+
+---
+
+## 16. If this were continued
+
+1. **Per-scene threshold adaptation.** The single measured failure — one missed event at novelty
+   0.1035 against a 0.12 threshold — and the all-clips reversal both point here.
+2. **Real annotated clips.** Every scheduler number rests on synthetic events on one desk scene.
+3. **A cache key trained for scene state**, rather than a generic ImageNet encoder.
+4. **The full model × quantization × scheduler cross** (figure 2's missing third axis): ~6 h of
+   oracle time for the eight Phase 3 configurations.
+
+---
+
+## Superseded
 
 **Phase 6 is complete and awaiting confirmation.** Do not start Phase 7 until it is given.
 
@@ -579,6 +632,8 @@ small `learned` policy), swept across their operating ranges against a per-frame
 rapid-motion-without-semantic-event cases where false triggers are the interesting failure. Those
 must be recorded with **exposure pinned** (§3) or the confound lands inside the very clips meant to
 expose it. That is the first task of Phase 4, and it needs the room set up deliberately.
+
+
 
 
 
