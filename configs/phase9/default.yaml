@@ -26,3 +26,9 @@ recipes:
   - frozen_sparse_2
   - frozen_sparse_4
   - frozen_sparse_8
+
+  # Static background PLUS lighting drift. Phase 9a's frozen ladder showed plain pixel differencing
+  # winning by up to 67x -- but a frozen scene has nothing to confuse a motion detector. These test
+  # whether that advantage survives the one thing Phase 2 measured it cannot handle.
+  - frozen_drift_sparse_4
+  - frozen_drift_sparse_8

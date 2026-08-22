@@ -271,6 +271,38 @@ def recipe_long_static(duration_s: float = 300.0):
     return fn, [], f"SPARSE REGIME: pure stasis over {duration_s:.0f}s"
 
 
+def recipe_sparse_events_drift(n_events: int, size: tuple[int, int] = (150, 130)):
+    """Sparse events on a drifting-light background — the discriminating case at scale.
+
+    Phase 9a found content scheduling wins 18-67x once the background is static, with plain pixel
+    differencing cheapest of all. That is expected and it is also incomplete: a motion detector is
+    cheapest precisely because a frozen background has nothing to confuse it. Its known weakness,
+    measured back in Phase 2 (`semantic/motion` 0.42), is that lighting change looks exactly like
+    content change.
+
+    So this adds a slow gamma drift to an otherwise static scene. If motion's advantage survives, the
+    embedding is not earning its 3 ms. If it collapses while the embedding holds, the two-tier design
+    is doing the job it was built for.
+    """
+    inner = recipe_sparse_events(n_events, size)
+
+    def make(duration_s: float = 300.0):
+        fn, events, purpose = inner(duration_s)
+
+        def wrapped(img, i, t, rng):
+            # Two slow cycles across the clip: far slower than any event, so nothing about the
+            # timing lets a policy cheat by keying on rate.
+            g = 1.0 - 0.5 * np.sin(np.pi * (t / duration_s) * 2.0) ** 2
+            out, state = fn(_gamma(img, float(g)), i, t, rng)
+            return out, state
+
+        return wrapped, events + [
+            Event(0.0, "lighting", False, "gamma drifts continuously through the whole clip"),
+        ], purpose + " + continuous lighting drift"
+
+    return make
+
+
 RECIPES: dict[str, Callable[[], tuple[Recipe, list[Event], str]]] = {
     "static": recipe_static,
     "object_events": recipe_object_events,
@@ -285,6 +317,8 @@ RECIPES: dict[str, Callable[[], tuple[Recipe, list[Event], str]]] = {
     "sparse_4": recipe_sparse_events(4),
     "sparse_8": recipe_sparse_events(8),
     "sparse_16": recipe_sparse_events(16),
+    "drift_sparse_4": recipe_sparse_events_drift(4),
+    "drift_sparse_8": recipe_sparse_events_drift(8),
 }
 
 
