@@ -2,6 +2,7 @@
 
 from .policies import (
     POLICY_KINDS,
+    AdaptiveNoveltyPolicy,
     Decision,
     EmbeddingNoveltyPolicy,
     FixedIntervalPolicy,
@@ -15,6 +16,7 @@ from .policies import (
 
 __all__ = [
     "POLICY_KINDS",
+    "AdaptiveNoveltyPolicy",
     "Decision",
     "EmbeddingNoveltyPolicy",
     "FixedIntervalPolicy",
