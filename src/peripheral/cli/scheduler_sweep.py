@@ -22,6 +22,7 @@ from ..eval.simulate import aggregate, metric_ceiling, simulate
 from ..eval.traces import ClipTrace
 from ..runtime import BoundedRunner
 from ..scheduler.policies import (
+    AdaptiveNoveltyPolicy,
     EmbeddingNoveltyPolicy,
     FixedIntervalPolicy,
     InformationGainPolicy,
@@ -32,6 +33,7 @@ from ..scheduler.train import fit
 from ._args import parse_and_load
 
 POLICY_CLASSES = {
+    "adaptive_novelty": AdaptiveNoveltyPolicy,
     "fixed_interval": FixedIntervalPolicy,
     "motion_threshold": MotionThresholdPolicy,
     "embedding_novelty": EmbeddingNoveltyPolicy,
@@ -51,7 +53,9 @@ class SchedulerSweepRunner(BoundedRunner):
             raise FileNotFoundError(
                 f"no traces in {trace_dir} — run peripheral.cli.build_traces first"
             )
-        self.traces = {n: ClipTrace.load(trace_dir / n) for n in names}
+        signal = str(self.cfg.phase8.get("signal", "pooled"))
+        self.signal = signal
+        self.traces = {n: ClipTrace.load(trace_dir / n).with_signal(signal) for n in names}
 
         held = list(c.held_out_clips)
         self.held_out = [n for n in names if n in held]
@@ -92,6 +96,10 @@ class SchedulerSweepRunner(BoundedRunner):
                 point, staleness_half_life_s=float(self.cfg.phase4.staleness_half_life_s),
                 min_gap_s=gap,
             )
+        if kind == "adaptive_novelty":
+            return AdaptiveNoveltyPolicy(
+                point, window_s=float(self.cfg.phase8.adaptive_window_s), min_gap_s=gap
+            )
         if kind == "learned":
             return LearnedPolicy(self.learned["weights"], self.learned["bias"],
                                  threshold=point, min_gap_s=gap)
@@ -131,6 +139,7 @@ class SchedulerSweepRunner(BoundedRunner):
     def teardown(self) -> None:
         ceilings = {n: round(metric_ceiling(t), 5) for n, t in self.traces.items()}
         self.recorder.record_extra("phase4_sweep", {
+            "signal": self.signal,
             "results": self.results,
             "per_clip": self.raw,
             "learned_policy": self.learned,
