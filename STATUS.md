@@ -51,7 +51,7 @@ Everything else is scaffolding for those two plots.
 | 6 | Replay harness + benchmarks + ablations | complete `RESULTS.md`; **no-future-frames test passing** | **✅ 170 passed · Gate 3 caught a real bug · SB subset 0.714** |
 | 7 | Ship: GUI demo, CI, README, demo GIF | fresh clone reaches a working live demo | **✅ 192 passed · demo 30.0 FPS · README + both figures + GIF** |
 | 8 | **Rescue the scheduler thesis** — diagnose, better signal, adaptive threshold | content policy beats the timer at matched budget on all six clips | **❌ FAILED — timer still wins. Signal fixed (+0.20 AUC), claim not.** |
-| 9 | **Find the regime** — sparsity ladder, static vs live background, lighting drift | a content policy beats a matched timer at ≥0.99 validity and 100% recall | **✅ 214 passed · 17–67× fewer calls on a static background · sparsity was the wrong variable** |
+| 9 | **Find the regime** — sparsity ladder, static vs live background, lighting drift | a content policy beats a matched timer at ≥0.99 validity and 100% recall | **✅ 219 passed · 17–67× fewer calls on a static background · sparsity was the wrong variable** |
 
 **Protocol:** phases run strictly in order. Each ends with its test, a reported number, and a full
 stop awaiting confirmation. Tag at each boundary (`git tag phase-0-scaffold`).
@@ -580,7 +580,7 @@ engineering will settle it.
 
 ## 16.5 Phase 9 results — the thesis holds, and Phase 8's explanation was wrong
 
-`pytest tests/ -q` → **214 passed**. Full write-up in `RESULTS.md` §9. Data:
+`pytest tests/ -q` → **219 passed**. Full write-up in `RESULTS.md` §9. Data:
 `results/phase9_sparsity.json` (11 clips × 300 s, 1,303 s of wall clock, no VLM).
 
 **The exit criterion is met, in one regime.** On a static-background camera the best content policy

@@ -36,6 +36,8 @@ impossible, so the question is how few calls you can get away with.
 | Slow tier meets an interactive target | **p95 photon-to-first-token 195 ms** (target 400 ms), 6.04 GB of 11.94 GB |
 | Answering rarely is viable | **100% answer validity at 0.56% of the per-frame oracle's calls** (held-out) |
 | A semantic cache removes more | **52.5% of remaining calls, zero false hits** |
+| **A scene-aware scheduler beats a timer — on a *static-background* camera** | **17–67× fewer VLM calls** at 100% event recall and ≥0.99 validity |
+| The learned fast tier earns its 2.95 ms under lighting drift | motion 1.0 → **16.6** calls/min (false triggers 0.000 → 0.951); embedding **unchanged** at 3.4 |
 | StreamingBench RTVU **subset** | 25/35 = **0.714** (random 0.250), 1,352 s of 1.0× replay, 0 violations |
 
 **Watching every frame costs 8.2 W. Answering every frame costs 65.6 W and still cannot keep up.**
@@ -45,11 +47,18 @@ That gap is the entire argument for the two-tier design.
 
 This belongs above the fold, not in a footnote.
 
-- **That a scene-aware scheduler beats a timer.** At a matched call budget, plain `fixed_interval`
-  equals or beats the embedding-novelty scheduler (validity **0.955 vs 0.941**), and is cheaper than
-  every content-aware policy for perfect validity across all six clips. The *savings* are real and
-  large. The claim that **embedding novelty specifically** delivers them is not supported by this
-  data.
+- **That a scene-aware scheduler beats a timer on a _busy_ scene.** Where a person is continuously
+  in frame, plain `fixed_interval` is cheaper than every content-aware policy at matched validity —
+  across all six Phase 4 clips, and at every sparsity from one event per 19 s to one per 150 s. The
+  novelty floor of a moving scene sits above the height of the events. **This is half the claim, and
+  it is the half that fails**; the 17–67× win above holds only once the background stops moving.
+- **That the static-background result is realistic.** That background is synthetic — a frozen frame
+  plus Gaussian noise, with no compression artifacts, autofocus hunting, or micro-motion. The
+  direction is unlikely to reverse; treat the magnitude as an upper bound.
+- **That sparsity was the problem.** An earlier version of this work blamed the failure on a timer
+  running at only 4–6× oversampling and prescribed sparser clips. Those clips were built:
+  oversampling stayed pinned at 75× and the timer kept winning. That explanation was wrong, and it
+  is left on record in `RESULTS.md` §8 next to the data refuting it.
 - **That the headline generalises.** A single global threshold does not transfer between scenes.
   Per-scene adaptation is the open problem this work motivates rather than solves.
 - **Anything about real semantic events.** Every scheduler number rests on synthetic events
