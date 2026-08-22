@@ -1,6 +1,6 @@
 # STATUS — where Peripheral is, and where it's going
 
-**Last updated:** 2026-08-08 · **Current phase:** 7 COMPLETE — all phases done · **Branch:** `phase1`
+**Last updated:** 2026-08-08 · **Current phase:** 8 COMPLETE — exit criterion FAILED, honestly · **Branch:** `phase1`
 
 This file is the single place to look to answer "what is done, what is assumed, what is next."
 Update it at every phase boundary. `PROMPT.md` is the plan; `CLAUDE.md` is the operating manual.
@@ -50,6 +50,7 @@ Everything else is scaffolding for those two plots.
 | 5 | Semantic cache *(droppable)* | hit rate / staleness / accuracy-cost numbers in `RESULTS.md` | **✅ verdict: KEEP (reversed after the timing fix) — 52.5% of calls, 0 false hits** |
 | 6 | Replay harness + benchmarks + ablations | complete `RESULTS.md`; **no-future-frames test passing** | **✅ 170 passed · Gate 3 caught a real bug · SB subset 0.714** |
 | 7 | Ship: GUI demo, CI, README, demo GIF | fresh clone reaches a working live demo | **✅ 192 passed · demo 30.0 FPS · README + both figures + GIF** |
+| 8 | **Rescue the scheduler thesis** — diagnose, better signal, adaptive threshold | content policy beats the timer at matched budget on all six clips | **❌ FAILED — timer still wins. Signal fixed (+0.20 AUC), claim not.** |
 
 **Protocol:** phases run strictly in order. Each ends with its test, a reported number, and a full
 stop awaiting confirmation. Tag at each boundary (`git tag phase-0-scaffold`).
@@ -238,6 +239,10 @@ Rejected approaches belong here with their reasons.
 | D33 | `Frame` carries **`t_presentation` separately from `t_capture`**, and all time-constant signal processing uses the former | They are not the same thing and conflating them was a real bug: during trace building the VLM took ~500 ms/frame, so frames looked 500 ms apart when they were 33 ms apart in the video, and the rolling reference's seconds-based half-life under-scaled novelty 3–4×. Latency needs capture time; signals need stream time. | One timestamp for both — the obvious design, and it silently inverted the Phase 4 policy ranking |
 | D34 | The demo runs inference on a **worker thread and skips** triggers while busy, rather than queueing | Inline inference dropped capture to 7.6 FPS, breaking invariant 7 in a new runner after the Phase 1 pipeline had honoured it. Skipping beats queueing because a backlog only yields answers about frames that are already stale. | Queueing triggers — smoother-looking call rate, staler answers, and capture still blocked |
 | D35 | **No demo container**, and the Docker split is documented with reasons in both the Dockerfile and the README | Webcam passthrough into WSL2 needs usbipd-win plus a v4l2 shim, after which `CAP_DSHOW` — chosen on measured jitter — does not exist; and the numbers depend on a specific CUDA build and a 95 W cap. A container that appeared to reproduce them on other hardware would be worse than none. | Shipping a `docker compose up` that half-works |
+| D37 | Phase 8 **diagnoses before treating**: `signal_diagnosis` decides threshold-vs-signal from data | The two explanations need opposite fixes. Building the adaptive threshold first would have put it on a signal that, on `object_events`, could not separate events at any value — the mean AUC of 0.880 hid a per-clip 0.696. | Going straight to adaptive thresholding, the intuitive fix, which would have failed for a reason the numbers would not have shown |
+| D38 | Fast-tier novelty is scored on the **top-3 cells of a 7×7 feature map**, not a pooled vector | Global pooling averages a corner event against a person moving through the middle — exactly the irrelevant motion the scheduler must ignore. Patch novelty lifted `object_events` AUC 0.696 → 0.895 at *lower* latency (2.95 vs 3.32 ms), because it skips the classifier head. | Keeping the pooled embedding, whose failure mode is structural rather than tunable |
+| D39 | The adaptive policy thresholds on a **rolling quantile**, making it a rate controller | A quantile is scale-free, so it calibrates per scene automatically — and it makes budget-matching against a timer automatic, turning the comparison into the exact question at issue: at the same number of calls, does picking the most novel frames beat picking evenly spaced ones? | An absolute adaptive threshold, which would still need a global constant somewhere |
+| D40 | **Phase 8 is recorded as failed**, with a test that fails if a content policy ever does beat the timer | The exit criterion was not met: `fixed_interval` remains cheapest on all six clips with either signal. Recording a failure as a failure is the whole point of having stated it in advance; the test means a future success forces the write-up to be rewritten rather than the claim quietly appearing. | Reporting the held-out 3× win and omitting the all-clips loss |
 | D36 | The README carries **"what was not established" above the fold**, and a test asserts it stays in the first half | It is the section most likely to drift downward over time, and it contains the all-clips reversal and the 7-of-500 benchmark subset. A footnote would be an overclaim by omission. | Leading with the headline alone |
 
 ---
@@ -527,6 +532,33 @@ single-threaded design is what makes the timing auditable line by line.
 
 ---
 
+## 16. Phase 8 results — the thesis did not survive, and the reason is now measured
+
+`pytest tests/ -q` → **207 passed**. Full write-up in `RESULTS.md` §8.
+
+**Exit criterion: FAILED.** No content-aware policy beats `fixed_interval` at a matched budget
+across all six clips, with either the pooled or the new patch signal. The timer reaches validity
+≥0.99 at 30.0 calls/min; the best content policy needs 32.1.
+
+**What was gained anyway:**
+
+| | |
+|---|---|
+| A diagnostic that decides threshold-vs-signal from data | correctly caught a per-clip AUC of 0.696 that the 0.880 mean hid |
+| Patch novelty (7×7 cells, top-3) | `object_events` AUC **0.696 → 0.895**, at **2.95 ms** vs 3.32 ms |
+| Adaptive quantile policy | scale-free; **the only policy that undercuts a timer on pure stasis** (25 vs 36 calls) |
+
+**Why the thesis cannot be shown on this data** — the number that matters most: a 2-second timer on
+these clips is only **4–6× oversampled** relative to the event rate (one event per 8–12 s). At that
+density blind sampling is near-optimal and frame *selection* has almost nothing to select. Content
+awareness pays in long stasis, and 24-second clips contain almost none.
+
+That is a hard design requirement for Phase 9, not an excuse: **clips must be minutes long with
+sparse events.** Until they exist this comparison cannot be settled, and no further policy
+engineering will settle it.
+
+---
+
 ## 15. Phase 7 results — shipped, and a third bug found on the way
 
 `pytest tests/ -q` → **192 passed**.
@@ -565,7 +597,7 @@ real, but the claim that embedding novelty specifically delivers them is not sup
 
 ---
 
-## 16. If this were continued
+## 17. If this were continued
 
 1. **Per-scene threshold adaptation.** The single measured failure — one missed event at novelty
    0.1035 against a 0.12 threshold — and the all-clips reversal both point here.

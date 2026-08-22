@@ -508,7 +508,10 @@ free. There is no honest partial route, so it is reported as not done rather tha
   matched budget equals or beats the embedding-novelty scheduler on validity (0.955 vs 0.941), and
   is cheaper than every content-aware policy for perfect validity across all six clips. The
   *savings* are real and large; the claim that **embedding novelty specifically** is what delivers
-  them is not supported.
+  them is not supported. **Phase 8 attempted to rescue this and failed** (§8): a better signal
+  (patch novelty, +0.20 AUC on the failing clip) and an adaptive threshold both helped, and the
+  timer still won. The reason is now quantified — these clips run a timer at only 4–6×
+  oversampling, a regime where blind sampling is near-optimal.
 - **That the headline claim generalises.** A single global threshold does not transfer between
   scenes; per-scene adaptation is the open problem this work motivates rather than solves.
 - **Anything about real semantic events.** Every scheduler number rests on synthetic events
@@ -521,6 +524,139 @@ and inverted the policy ranking; an ordering bug in the eval loop gave one query
 future. Both survived normal operation and were caught only by tests written specifically to attack
 the invariants. That is the argument for building the anti-cheat suite before trusting any number —
 including one's own.
+
+---
+
+## 8. Trying to rescue the scheduler thesis (Phase 8) — **the exit criterion failed**
+
+Phase 6 left the project unable to support its own headline: at a matched budget a plain timer
+equalled or beat the embedding-novelty scheduler. Phase 8 set out to fix that, with a stated exit
+criterion — *a content-aware policy beats `fixed_interval` at a matched budget on **all six**
+clips* — and permission to fail.
+
+**It failed.** The gains along the way are real and are reported below, but the headline claim
+remains unsupported, and this section exists so that stays visible.
+
+### 8a — Diagnosis: is it the threshold or the signal?
+
+Two explanations were live, needing opposite fixes, so guessing would have been expensive.
+`peripheral.cli.signal_diagnosis` measures both, **within each clip**, so per-scene scale cannot act
+as a confound:
+
+| clip | AUC (novelty separating event frames from quiet frames) | event median novelty | quiet p95 | separable? |
+|---|---|---|---|---|
+| scene_cuts | 0.996 | 0.2509 | 0.1465 | ✅ |
+| mixed | 0.948 | 0.1642 | 0.1442 | barely |
+| **object_events** | **0.696** | **0.0732** | **0.1238** | ❌ **event is below background** |
+
+**Verdict: signal problem.** On `object_events` the events sit *underneath* the scene's own
+background novelty, so no threshold exists at any value — confirmed independently by the threshold
+sweep, where no point in a 60-value grid reached 0.99 validity on that clip. Adaptive thresholding
+would have been built on sand.
+
+The mean AUC of 0.880 hides this completely. Only the per-clip view exposes it.
+
+**Mechanism:** the fast tier pools its embedding over the whole frame. An object appearing in one
+corner is a small perturbation next to a person moving through the middle — global pooling averages
+the event away against exactly the irrelevant motion the scheduler is supposed to ignore.
+
+### 8b — Spatial (patch) novelty
+
+The fix follows directly from the mechanism: **stop pooling**. Keep the encoder's 7×7 feature map,
+give every cell its own rolling reference, and score novelty as the mean over the top-3 most-changed
+cells. A corner event then registers at close to full strength.
+
+It costs nothing extra — the pooled vector was already computed *from* this feature map:
+
+| | pooled (Phase 2) | **patch (Phase 8b)** |
+|---|---|---|
+| latency p50 | 3.32 ms | **2.95 ms** (skips the classifier head) |
+| AUC on `object_events` | 0.696 | **0.895** |
+| AUC on `mixed` | 0.948 | 0.910 |
+| AUC on `scene_cuts` | 0.996 | 0.955 |
+| **mean AUC** | 0.880 | **0.920** |
+
+**The signal problem is fixed**, at a small cost on the two clips that were already easy, and the
+8a verdict flips to *threshold problem* with 1.68× of adaptation headroom.
+
+### 8b — Adaptive quantile policy
+
+With the verdict now "threshold problem", the threshold was made to adapt: fire when novelty exceeds
+a rolling **quantile** of the scene's own recent distribution. That makes it a rate controller —
+`q = 0.98` fires on roughly the top 2% of frames whatever the scene's absolute novelty scale is —
+which conveniently makes budget-matching automatic, and turns the comparison into exactly the
+question the project cares about: *at the same number of calls as a timer, does picking the most
+novel frames beat picking evenly spaced ones?*
+
+### 8c — The answer: no
+
+Cheapest operating point reaching validity ≥ 0.99, all six clips:
+
+| policy | signal | calls/min | vs timer |
+|---|---|---|---|
+| **fixed_interval @ 2 s** | — | **30.0** | — |
+| learned @ 0.95 | pooled | 32.1 | 0.94× |
+| motion_threshold @ 0.008 | pooled | 55.8 | 0.54× |
+| embedding_novelty @ 0.07 | pooled | 103.8 | 0.29× |
+| embedding_novelty @ 0.35 | patch | 125.8 | 0.24× |
+| adaptive_novelty | either | *never reaches the bar on all six* | — |
+
+**No content-aware policy beats the timer, on either signal.** On the held-out pair several do (up
+to 3×), which is the same held-out-vs-all reversal Phase 4 reported. Fixing the signal did not fix
+the outcome.
+
+### Why — and this is the useful part
+
+A 2-second timer on these clips is only **4–6× oversampled** relative to the event rate:
+
+| clip | duration | events | seconds/event | timer calls | oversampling |
+|---|---|---|---|---|---|
+| object_events | 24 s | 3 | 8.0 | 12 | **4.0×** |
+| mixed | 24 s | 2 | 12.0 | 12 | 6.0× |
+| scene_cuts | 24 s | 2 | 12.0 | 12 | 6.0× |
+| static / lighting_drift / rapid_motion | 24 s | 0 | — | 12 | ∞ (all wasted) |
+
+**At 4–6× oversampling a timer physically cannot miss much.** That is the regime where blind
+sampling is near-optimal, and no amount of cleverness in frame *selection* can beat it — there is
+almost nothing to select. Content-awareness pays when a scene is static for long stretches, and
+24-second clips with an event every 8–12 seconds contain almost none of that.
+
+The stasis clips show the effect that *does* exist, on real data. At each policy's cheapest
+all-clips setting, calls spent on the three clips where **nothing ever happens**:
+
+| policy | calls on stasis clips | worst event-clip validity |
+|---|---|---|
+| fixed_interval @ 2 s | 36 | 1.000 |
+| **adaptive_novelty q=0.98 (patch)** | **25** | 0.745 |
+| motion_threshold @ 0.008 | 95 | 0.984 |
+| embedding_novelty @ 0.07 | 115 | 0.967 |
+
+The adaptive patch policy is **the only policy that spends less than a timer on pure stasis** — 31%
+fewer calls — and it pays for that by missing events (validity 0.745). Every other content policy
+spends *more* than the timer on clips where nothing happens, which is the opposite of the intended
+behaviour.
+
+### What Phase 8 actually delivered
+
+1. **A reusable diagnostic** that decides threshold-vs-signal from data instead of intuition, and
+   which correctly identified a failure the aggregate AUC hid.
+2. **A better fast-tier signal**: patch novelty, +0.20 AUC on the failing clip, at *lower* latency.
+3. **An adaptive policy** that is scale-free and is the only one to undercut a timer on stasis.
+4. **A quantified reason the thesis cannot be demonstrated on this data** — the 4–6× oversampling
+   regime — which is a concrete design requirement for the clips Phase 9 must record.
+
+### What it did not deliver
+
+The claim. `fixed_interval` remains the cheapest way to hold a valid answer across these six clips,
+and **the project still cannot show that scene-aware scheduling beats a timer**. Phase 8 narrowed
+*why* considerably; it did not change the answer.
+
+### The design requirement this hands to Phase 9
+
+Clips must be **minutes long with sparse events**, not 24 seconds with one every 8–12. At 100×
+oversampling a timer must either burn its budget on stasis or miss events, and that is the regime
+where frame selection can pay. Until such clips exist, this comparison cannot be settled — and no
+amount of policy engineering will settle it.
 
 ---
 
