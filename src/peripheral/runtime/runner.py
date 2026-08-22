@@ -66,6 +66,11 @@ class BoundedRunner(ABC):
     ) -> None:
         self.cfg = cfg
         self.duration_s = float(duration_s)
+        # The deadline reads from a private copy, so a subclass that happens to define its own
+        # `duration_s` in setup() cannot silently move it. That is not hypothetical: the Phase 9
+        # runner stored a *clip* duration of 300 s under the same name and truncated a 3,600 s run
+        # to 300 s, reporting `status: completed` with no note and no error.
+        self._run_duration_s = float(duration_s)
         self.headless = bool(headless)
         self.metrics_out = Path(metrics_out) if metrics_out else None
         self.seed = int(seed)
@@ -133,7 +138,7 @@ class BoundedRunner(ABC):
             self.power.start()
 
             self.recorder.start()
-            self._deadline = now() + self.duration_s
+            self._deadline = now() + self._run_duration_s
             while now() < self._deadline and not self._stop:
                 if not self.step():
                     self.recorder.note("run ended early: step() returned False")

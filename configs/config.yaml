@@ -14,6 +14,7 @@ defaults:
   - phase5: default
   - phase6: default
   - phase8: default
+  - phase9: default
   - streamingbench: default
   - demo: default
   - _self_

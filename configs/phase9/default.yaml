@@ -1,0 +1,28 @@
+# Phase 9a — the sparsity study.
+#
+# Phase 8 failed its exit criterion and measured why: at 4-6x timer oversampling, blind sampling is
+# near-optimal and frame selection has almost nothing to select. This builds the regimes that were
+# missing — same duration, varying event count — so the timer's oversampling sweeps across an order
+# of magnitude and the question becomes answerable rather than assumed.
+clip_dir: data/eval_clips_long
+
+# 300 s at 30 fps = 9,000 frames per clip. Affordable only because this study needs no oracle:
+# validity comes from labels, so 9,000 frames cost ~40 s of fast tier instead of ~2 h of VLM.
+clip_duration_s: 300.0
+
+# Sparsity ladder. At a 2 s timer these span roughly 150x down to 9x oversampling, bracketing the
+# 4-6x regime where Phase 8's clips sat.
+recipes:
+  - long_static     # nothing ever happens: every timer call is waste, by construction
+  - sparse_2        # 100 s per event
+  - sparse_4        # 60 s per event
+  - sparse_8        # 33 s per event
+  - sparse_16       # 18 s per event
+
+  # Same sparsity ladder on a FROZEN background. Phase 9a's first pass showed the moving person in
+  # our base footage dominates the signal, so these isolate background stability from event
+  # sparsity — the variable that first pass could not separate.
+  - frozen_long_static
+  - frozen_sparse_2
+  - frozen_sparse_4
+  - frozen_sparse_8

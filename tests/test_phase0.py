@@ -537,3 +537,31 @@ def test_webcam_smoke_run(tmp_path, has_webcam):
     validate_metrics(doc)
     # The camera is capped at 30 FPS (measured); a synchronous read loop should track it closely.
     assert doc["metrics"]["achieved_fps"] > 25
+
+
+class _ShadowingRunner(BoundedRunner):
+    """A subclass that names its own attribute `duration_s`, as several runners legitimately might."""
+
+    name = "shadowing"
+
+    def setup(self):
+        self.duration_s = 0.05      # a *clip* duration, nothing to do with the run deadline
+        self.n = 0
+
+    def step(self) -> bool:
+        self.n += 1
+        self.recorder.record_frame_captured(self.n)
+        return True
+
+
+def test_a_subclass_cannot_shrink_the_run_deadline_by_shadowing(tmp_path, synthetic_cfg):
+    """Regression: the Phase 9 runner stored a 300 s clip length as `duration_s` and silently
+    truncated a 3,600 s run to 300 s — reporting `status: completed`, with no note and no error.
+    The deadline now reads a private copy taken at construction."""
+    out = tmp_path / "m.json"
+    runner = _ShadowingRunner(cfg=synthetic_cfg, duration_s=0.6, metrics_out=out)
+    assert runner.run() == EXIT_OK
+    doc = json.loads(out.read_text(encoding="utf-8"))
+    assert doc["run"]["duration_actual_s"] >= 0.5, (
+        f"the run honoured the shadowed 0.05 s instead of the requested 0.6 s: {doc['run']}"
+    )

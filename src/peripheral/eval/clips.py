@@ -209,6 +209,68 @@ def recipe_scene_cuts() -> tuple[Recipe, list[Event], str]:
     return fn, events, "hard scene cuts — an upper bound on how detectable an event can be"
 
 
+def recipe_sparse_events(n_events: int, size: tuple[int, int] = (150, 130)):
+    """`n_events` object appear/vanish events spread evenly over a long clip.
+
+    Phase 8 ended by measuring *why* the scheduler thesis could not be shown: a 2-second timer on
+    24-second clips with an event every 8-12 s is only 4-6x oversampled, and at that density blind
+    sampling is near-optimal. This factory produces the regimes that were missing — long clips with
+    sparse events, where a timer must either burn its budget on stasis or miss things.
+
+    The object alternates colour between events, so every event is a genuine state change rather
+    than a return to a state already seen.
+    """
+    w, h = size
+
+    def make(duration_s: float = 300.0):
+        # EVENT TIMES ARE RANDOMISED, NOT EVENLY SPACED, and that is load-bearing. An earlier
+        # version spaced them evenly, which let a fixed-interval timer PHASE-LOCK to the event
+        # schedule: at 4 events over 300 s, a 60 s timer fired exactly on each event and reached
+        # 99% validity with 5 calls. That is an artifact of the generator, not a property of
+        # timers, and it silently handed the baseline the comparison.
+        #
+        # Seeded, so the clips are reproducible; minimum separation, so events stay resolvable.
+        gen = np.random.default_rng(4242 + n_events)
+        lo, hi = 0.12 * duration_s, 0.95 * duration_s
+        min_gap = 0.6 * (hi - lo) / max(1, n_events)
+        times: list[float] = []
+        for _ in range(2000):
+            cand = sorted(gen.uniform(lo, hi, n_events))
+            if n_events < 2 or min(np.diff(cand)) >= min_gap:
+                times = [float(x) for x in cand]
+                break
+        if not times:
+            times = [float(x) for x in np.linspace(lo, hi, n_events)]
+        events = [
+            Event(t, "object_change" if i else "object_appear", True,
+                  f"object event {i + 1} of {n_events} at {t:.0f}s")
+            for i, t in enumerate(times)
+        ]
+
+        def fn(img, i, t, rng):
+            state = sum(1 for et in times if t >= et)
+            if state == 0:
+                return img, 0
+            obj_rng = np.random.default_rng(100 + state)
+            hue = (15 + 40 * state) % 180
+            return _paste(img, _make_object(obj_rng, w, h, hue),
+                          img.shape[1] - w - 20, 60), state
+
+        return fn, events, (
+            f"SPARSE REGIME: {n_events} events over {duration_s:.0f}s "
+            f"({duration_s / max(1, n_events):.0f}s per event)"
+        )
+
+    return make
+
+
+def recipe_long_static(duration_s: float = 300.0):
+    """A long clip where nothing ever happens — the pure-stasis regime, at scale."""
+    def fn(img, i, t, rng):
+        return img, 0
+    return fn, [], f"SPARSE REGIME: pure stasis over {duration_s:.0f}s"
+
+
 RECIPES: dict[str, Callable[[], tuple[Recipe, list[Event], str]]] = {
     "static": recipe_static,
     "object_events": recipe_object_events,
@@ -216,6 +278,13 @@ RECIPES: dict[str, Callable[[], tuple[Recipe, list[Event], str]]] = {
     "rapid_motion": recipe_rapid_motion,
     "mixed": recipe_mixed,
     "scene_cuts": recipe_scene_cuts,
+    # Phase 9: long clips at controlled event sparsity, to reach the regimes Phase 8 showed were
+    # missing. `duration_s` is supplied by build_clip.
+    "long_static": recipe_long_static,
+    "sparse_2": recipe_sparse_events(2),
+    "sparse_4": recipe_sparse_events(4),
+    "sparse_8": recipe_sparse_events(8),
+    "sparse_16": recipe_sparse_events(16),
 }
 
 
@@ -228,13 +297,26 @@ def build_clip(
     fps: float = 30.0,
     seed: int = 1337,
     fourcc: str = "mp4v",
+    freeze_base: bool = False,
 ) -> ClipAnnotation:
-    """Render one annotated clip from base footage."""
+    """Render one annotated clip from base footage.
+
+    `freeze_base` holds a single frame for the whole clip, giving a genuinely static background with
+    light synthetic sensor noise. This isolates the variable Phase 9a found to matter: our base
+    footage contains a continuously moving person, so "stasis" in those clips is not stasis at all,
+    and any threshold low enough to catch a composited event also fires on the person. A frozen
+    background answers the question the moving one cannot — does content-awareness pay when the
+    background really is still?
+    """
     base = cv2.VideoCapture(str(base_path))
     if not base.isOpened():
         raise RuntimeError(f"cannot open base footage: {base_path}")
 
-    recipe, events, purpose = RECIPES[recipe_name]()
+    factory = RECIPES[recipe_name]
+    try:
+        recipe, events, purpose = factory(duration_s)
+    except TypeError:
+        recipe, events, purpose = factory()
     rng = np.random.default_rng(seed)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -244,6 +326,7 @@ def build_clip(
     if not ok:
         raise RuntimeError("base footage produced no frames")
     h, w = first.shape[:2]
+    base.set(cv2.CAP_PROP_POS_FRAMES, 0)
     writer = cv2.VideoWriter(str(out_path), cv2.VideoWriter_fourcc(*fourcc), fps, (w, h))
     if not writer.isOpened():
         raise RuntimeError(f"cannot open writer for {out_path}")
@@ -252,13 +335,31 @@ def build_clip(
     state_ids: list[int] = []
     base.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
+    # Ping-pong the base footage rather than looping it. A hard loop puts a discontinuity at every
+    # wrap, which reads as a novelty spike and would hand every content policy a false trigger it
+    # did not earn — fatal for a 300 s clip built from 60 s of footage.
+    base_frames: list[np.ndarray] = []
+    while True:
+        ok, f = base.read()
+        if not ok:
+            break
+        base_frames.append(f)
+    if not base_frames:
+        raise RuntimeError("base footage produced no frames")
+    pingpong = base_frames + base_frames[-2:0:-1] if len(base_frames) > 2 else base_frames
+
+    frozen = base_frames[len(base_frames) // 3]
+    noise_rng = np.random.default_rng(seed + 77)
+
     for i in range(n_frames):
-        ok, frame = base.read()
-        if not ok:  # loop the base footage if it is shorter than the target clip
-            base.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            ok, frame = base.read()
-            if not ok:
-                break
+        if freeze_base:
+            # Static background is not a noiseless one: real sensors dither, and a perfectly
+            # constant frame would hand every content policy a zero-novelty baseline no camera
+            # could ever provide.
+            noise = noise_rng.normal(0.0, 1.6, frozen.shape).astype(np.float32)
+            frame = np.clip(frozen.astype(np.float32) + noise, 0, 255).astype(np.uint8)
+        else:
+            frame = pingpong[i % len(pingpong)]
         t = i / fps
         modified, state = recipe(frame, i, t, rng)
         writer.write(modified)
