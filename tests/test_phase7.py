@@ -147,8 +147,15 @@ def test_eval_container_requirements_exclude_gpu_stacks():
     joined = "\n".join(pinned)
     for forbidden in ("onnxruntime-gpu", "cu128", "bitsandbytes", "timm", "transformers"):
         assert forbidden not in joined, f"the CPU eval image must not pull {forbidden}"
-    assert any(p.startswith("torch==") and "+cu" not in p for p in pinned), (
-        "torch must be the CPU build in the eval container"
+
+    # torch should be absent entirely, not merely the CPU build. Every `import torch` in the package
+    # is inside a function, and the eval path records a missing torch as null-plus-reason rather
+    # than fabricating a value — verified by running the CI selection with it blocked. Allowing a
+    # bare `torch==` pin here would also reintroduce a trap: on Linux the default PyPI wheel is the
+    # ~2.5 GB CUDA build.
+    torch_pins = [p for p in pinned if p.split("=")[0].strip() == "torch"]
+    assert not torch_pins, (
+        f"the eval container does not need torch at all; found {torch_pins}"
     )
 
 

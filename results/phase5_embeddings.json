@@ -1,0 +1,1753 @@
+{
+  "schema_version": 1,
+  "run": {
+    "name": "phase5_extract_embeddings",
+    "status": "completed",
+    "failure": null,
+    "duration_requested_s": 900.0,
+    "duration_actual_s": 22.8487,
+    "t_start_monotonic": 77366.151287,
+    "started_utc": "2026-08-08T07:36:00Z",
+    "wall_anchor": {
+      "monotonic": 77357.0127816,
+      "utc": "2026-08-08T07:36:00Z",
+      "unix": 1786174560.0233438
+    },
+    "notes": [
+      "run ended early: step() returned False"
+    ]
+  },
+  "environment": {
+    "python": "3.12.10",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "seed": 1337,
+    "peripheral_version": "0.1.0",
+    "git_commit": "e5ecfc1",
+    "gpu_name": "NVIDIA GeForce RTX 5070 Ti Laptop GPU",
+    "gpu_vram_gb": 11.94,
+    "torch": "2.11.0+cu128",
+    "cuda": "12.8",
+    "gpu_capability": "12.0"
+  },
+  "config": {
+    "capture": {
+      "source": "webcam",
+      "device_index": 0,
+      "backend": "CAP_DSHOW",
+      "width": 640,
+      "height": 480,
+      "fourcc": "MJPG",
+      "target_fps": 30.0,
+      "warmup_frames": 5,
+      "auto_exposure": 0.25,
+      "exposure": -5.0
+    },
+    "telemetry": {
+      "power_sample_hz": 10.0,
+      "keep_events": true,
+      "max_events": 500000
+    },
+    "scheduler": {
+      "policy": "none"
+    },
+    "pipeline": {
+      "policy": "drop_oldest",
+      "capture_q_size": 4,
+      "vlm_q_size": 2,
+      "answer_q_size": 8,
+      "queue_sample_hz": 20.0,
+      "prompt": "Describe what you see in one short sentence.",
+      "max_tokens": 32
+    },
+    "vlm": {
+      "name": "Qwen3-VL-4B-Instruct-Q8_0",
+      "bench_label": "Qwen3-VL-4B Q8_0",
+      "binary": "vendor/llama.cpp/llama-server.exe",
+      "model": "models/Qwen3-VL-4B/Qwen3VL-4B-Instruct-Q8_0.gguf",
+      "mmproj": "models/Qwen3-VL-4B/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf",
+      "host": "127.0.0.1",
+      "port": 8080,
+      "n_gpu_layers": 99,
+      "ctx_size": 4096,
+      "jpeg_quality": 85,
+      "autostart": true,
+      "startup_timeout_s": 300.0,
+      "extra_args": [
+        "--cache-reuse",
+        "256"
+      ]
+    },
+    "fasttier": {
+      "encoder": "onnx",
+      "model": "mobilenetv3_small_100",
+      "onnx_path": "models/onnx/mobilenetv3_small_100_224.onnx",
+      "input_size": 224,
+      "dtype": "fp16",
+      "device": "cuda",
+      "clip_norm": false,
+      "downsample_size": 32,
+      "providers": null,
+      "motion_size": 64,
+      "half_life_s": 2.0,
+      "keep_embedding": false
+    },
+    "encoder_bench": {
+      "clip": "data/clips/desk_60s.mp4",
+      "n_frames": 24,
+      "frame_stride": 60,
+      "latency_reps": 200,
+      "warmup": 20,
+      "candidates": [
+        {
+          "label": "downsample32 (control, no network)",
+          "kind": "downsample",
+          "size": 32
+        },
+        {
+          "label": "mobilenetv3_small@224 torch fp16",
+          "kind": "torch",
+          "model": "mobilenetv3_small_100",
+          "input_size": 224,
+          "dtype": "fp16"
+        },
+        {
+          "label": "mobilenetv3_small@224 onnx",
+          "kind": "onnx",
+          "model": "mobilenetv3_small_100",
+          "input_size": 224
+        },
+        {
+          "label": "dinov2_vits14@224 torch fp16",
+          "kind": "torch",
+          "model": "vit_small_patch14_dinov2.lvd142m",
+          "input_size": 224,
+          "dtype": "fp16"
+        },
+        {
+          "label": "dinov2_vits14@224 onnx",
+          "kind": "onnx",
+          "model": "vit_small_patch14_dinov2.lvd142m",
+          "input_size": 224
+        },
+        {
+          "label": "clip_vitb32@224 torch fp16",
+          "kind": "torch",
+          "model": "vit_base_patch32_clip_224.openai",
+          "input_size": 224,
+          "dtype": "fp16",
+          "clip_norm": true
+        },
+        {
+          "label": "clip_vitb32@224 onnx",
+          "kind": "onnx",
+          "model": "vit_base_patch32_clip_224.openai",
+          "input_size": 224,
+          "clip_norm": true
+        }
+      ]
+    },
+    "vlm_bench": {
+      "max_foreign_vram_gb": 1.5,
+      "clip": "data/clips/desk_60s.mp4",
+      "n_frames": 20,
+      "frame_stride": 90,
+      "warmup": 2,
+      "max_tokens": 48,
+      "prompt": "Describe what you see in one short sentence.",
+      "configs": [
+        {
+          "label": "SmolVLM2-500M f16",
+          "family": "SmolVLM2-500M",
+          "quant": "f16",
+          "params": "0.5B",
+          "model": "models/SmolVLM2-500M/SmolVLM2-500M-Video-Instruct-f16.gguf",
+          "mmproj": "models/SmolVLM2-500M/mmproj-SmolVLM2-500M-Video-Instruct-f16.gguf"
+        },
+        {
+          "label": "SmolVLM2-500M Q8_0",
+          "family": "SmolVLM2-500M",
+          "quant": "Q8_0",
+          "params": "0.5B",
+          "model": "models/SmolVLM2-500M/SmolVLM2-500M-Video-Instruct-Q8_0.gguf",
+          "mmproj": "models/SmolVLM2-500M/mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "SmolVLM2-2.2B Q8_0",
+          "family": "SmolVLM2-2.2B",
+          "quant": "Q8_0",
+          "params": "2.2B",
+          "model": "models/SmolVLM2-2.2B/SmolVLM2-2.2B-Instruct-Q8_0.gguf",
+          "mmproj": "models/SmolVLM2-2.2B/mmproj-SmolVLM2-2.2B-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "SmolVLM2-2.2B Q4_K_M",
+          "family": "SmolVLM2-2.2B",
+          "quant": "Q4_K_M",
+          "params": "2.2B",
+          "model": "models/SmolVLM2-2.2B/SmolVLM2-2.2B-Instruct-Q4_K_M.gguf",
+          "mmproj": "models/SmolVLM2-2.2B/mmproj-SmolVLM2-2.2B-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "Qwen3-VL-2B Q8_0",
+          "family": "Qwen3-VL-2B",
+          "quant": "Q8_0",
+          "params": "2B",
+          "model": "models/Qwen3-VL-2B/Qwen3VL-2B-Instruct-Q8_0.gguf",
+          "mmproj": "models/Qwen3-VL-2B/mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "Qwen3-VL-2B Q4_K_M",
+          "family": "Qwen3-VL-2B",
+          "quant": "Q4_K_M",
+          "params": "2B",
+          "model": "models/Qwen3-VL-2B/Qwen3VL-2B-Instruct-Q4_K_M.gguf",
+          "mmproj": "models/Qwen3-VL-2B/mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "Qwen3-VL-4B Q8_0",
+          "family": "Qwen3-VL-4B",
+          "quant": "Q8_0",
+          "params": "4B",
+          "model": "models/Qwen3-VL-4B/Qwen3VL-4B-Instruct-Q8_0.gguf",
+          "mmproj": "models/Qwen3-VL-4B/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "Qwen3-VL-4B Q4_K_M",
+          "family": "Qwen3-VL-4B",
+          "quant": "Q4_K_M",
+          "params": "4B",
+          "model": "models/Qwen3-VL-4B/Qwen3VL-4B-Instruct-Q4_K_M.gguf",
+          "mmproj": "models/Qwen3-VL-4B/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf"
+        }
+      ]
+    },
+    "kv_reuse": {
+      "model": "models/Qwen3-VL-4B/Qwen3VL-4B-Instruct-Q8_0.gguf",
+      "mmproj": "models/Qwen3-VL-4B/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf",
+      "clip": "data/clips/desk_60s.mp4",
+      "n_frames": 40,
+      "frame_stride": 45,
+      "reps": 1,
+      "warmup": 3,
+      "max_tokens": 48,
+      "prompt": "Describe what you see in one short sentence.",
+      "arms": [
+        {
+          "label": "A image-first, no reuse",
+          "image_first": true,
+          "stream": true,
+          "server_args": []
+        },
+        {
+          "label": "B text-first, slot cache",
+          "image_first": false,
+          "stream": true,
+          "server_args": []
+        },
+        {
+          "label": "C text-first, --cache-reuse 256",
+          "image_first": false,
+          "stream": true,
+          "server_args": [
+            "--cache-reuse",
+            "256"
+          ]
+        },
+        {
+          "label": "D text-first, non-streaming",
+          "image_first": false,
+          "stream": false,
+          "server_args": [
+            "--cache-reuse",
+            "256"
+          ]
+        }
+      ]
+    },
+    "hf_reference": {
+      "model_id": "Qwen/Qwen3-VL-4B-Instruct",
+      "quant_type": "nf4",
+      "double_quant": true,
+      "clip": "data/clips/desk_60s.mp4",
+      "n_frames": 20,
+      "frame_stride": 90,
+      "max_tokens": 48,
+      "prompt": "Describe what you see in one short sentence.",
+      "compare_gguf": true
+    },
+    "phase4": {
+      "base_footage": "data/clips/desk_60s.mp4",
+      "clip_dir": "data/eval_clips",
+      "trace_dir": "data/traces",
+      "clip_duration_s": 24.0,
+      "clip_fps": 30.0,
+      "clips": [
+        {
+          "name": "static",
+          "recipe": "static"
+        },
+        {
+          "name": "object_events",
+          "recipe": "object_events"
+        },
+        {
+          "name": "lighting_drift",
+          "recipe": "lighting_drift"
+        },
+        {
+          "name": "rapid_motion",
+          "recipe": "rapid_motion"
+        },
+        {
+          "name": "mixed",
+          "recipe": "mixed"
+        },
+        {
+          "name": "scene_cuts",
+          "recipe": "scene_cuts"
+        }
+      ],
+      "held_out_clips": [
+        "lighting_drift",
+        "mixed"
+      ],
+      "prompt": "Describe what you see in one short sentence.",
+      "max_tokens": 32,
+      "rebuild_traces": false,
+      "min_gap_s": 0.3,
+      "staleness_half_life_s": 3.0,
+      "warmup_frames": 15
+    },
+    "phase5": {
+      "policy_threshold": 0.12,
+      "cache_thresholds": [
+        0.9,
+        0.95,
+        0.97,
+        0.98,
+        0.99,
+        0.995,
+        0.999
+      ],
+      "max_staleness_s": 30.0,
+      "max_entries": 64,
+      "rebuild": false
+    },
+    "seed": 1337,
+    "run": {
+      "duration_s": 900.0,
+      "headless": true,
+      "metrics_out": "results\\phase5_embeddings.json"
+    },
+    "record": {
+      "path": "data/clips/clip.mp4",
+      "fourcc": "mp4v"
+    },
+    "paths": {
+      "results_dir": "results",
+      "data_dir": "data",
+      "models_dir": "models"
+    }
+  },
+  "definitions": {
+    "t0": "Frame timestamps are taken with time.perf_counter() at the instant OpenCV returns the frame \u2014 NOT true photon arrival. Sensor exposure and driver/USB transport add an unmeasured constant offset, so photon-to-answer latency reported here is a LOWER BOUND.",
+    "photon_to_first_token_ms": "t(first generated token of the answer) - t0(frame that triggered the VLM call). Includes preprocessing, vision encoding, prefill and any IPC \u2014 never model-only time.",
+    "photon_to_answer_ms": "t(final token of the answer) - t0(frame that triggered the VLM call). Same inclusions.",
+    "answer_staleness_ms": "t(answer emitted) - t0(frame whose evidence backs that answer). For a cache hit this is the age of the cached scene evidence, not the age of the cache entry.",
+    "false_trigger_rate": "Fraction of VLM invocations fired on frames externally labelled as carrying no semantic change. Requires ground-truth labels; null when the run has none.",
+    "accuracy_vs_oracle": "Agreement with the per-frame oracle (VLM invoked on every frame) on the same query timeline. Null unless an oracle run was supplied.",
+    "percentiles": "numpy.percentile with linear interpolation over the full population of the run (no warmup discarded unless the run config says so).",
+    "energy_j": "Trapezoidal integration of NVML power samples over the measured window. 'marginal' subtracts the idle baseline measured before the workload started.",
+    "null_vs_zero": "null means NOT MEASURED. 0 means measured and the value was zero. They are never interchangeable."
+  },
+  "metrics": {
+    "frames_captured": 0,
+    "frames_dropped": 0,
+    "drop_rate": null,
+    "achieved_fps": 0.0,
+    "capture_interval_ms": null,
+    "stages_ms": null,
+    "queue_depth": null,
+    "photon_to_first_token_ms": null,
+    "photon_to_answer_ms": null,
+    "vlm_calls": 0,
+    "vlm_calls_per_min": 0.0,
+    "answer_staleness_ms": null,
+    "accuracy_vs_oracle": null,
+    "false_trigger_rate": null,
+    "trigger_count": null,
+    "power": {
+      "available": true,
+      "error": null,
+      "driver": "592.01",
+      "power_limit_w": 95.0,
+      "baseline_power_w": 7.639,
+      "n_samples": 210,
+      "sample_hz": 10.0,
+      "mean_w": 21.666,
+      "peak_w": 32.338,
+      "energy_j": 495.261,
+      "energy_marginal_j": 320.871,
+      "energy_per_query_j": null,
+      "energy_marginal_per_query_j": null,
+      "mean_util_pct": 21.1,
+      "peak_temp_c": 53,
+      "series": [
+        [
+          77366.151445,
+          10.913,
+          741138432,
+          0
+        ],
+        [
+          77366.258284,
+          10.913,
+          741138432,
+          0
+        ],
+        [
+          77366.366236,
+          12.304,
+          741138432,
+          4
+        ],
+        [
+          77366.475482,
+          12.304,
+          741138432,
+          4
+        ],
+        [
+          77366.585374,
+          12.304,
+          741138432,
+          4
+        ],
+        [
+          77366.695522,
+          12.304,
+          741138432,
+          4
+        ],
+        [
+          77366.80435,
+          12.304,
+          741138432,
+          4
+        ],
+        [
+          77366.913142,
+          16.451,
+          741138432,
+          14
+        ],
+        [
+          77367.025347,
+          16.451,
+          741138432,
+          14
+        ],
+        [
+          77367.135518,
+          16.451,
+          741138432,
+          14
+        ],
+        [
+          77367.245658,
+          16.451,
+          741138432,
+          14
+        ],
+        [
+          77367.353828,
+          22.839,
+          741138432,
+          14
+        ],
+        [
+          77367.463072,
+          22.839,
+          741138432,
+          14
+        ],
+        [
+          77367.572949,
+          22.839,
+          741138432,
+          14
+        ],
+        [
+          77367.682274,
+          22.839,
+          741138432,
+          14
+        ],
+        [
+          77367.791877,
+          22.839,
+          741138432,
+          14
+        ],
+        [
+          77367.902294,
+          22.8,
+          741138432,
+          13
+        ],
+        [
+          77368.010965,
+          22.8,
+          741138432,
+          13
+        ],
+        [
+          77368.121084,
+          22.8,
+          741138432,
+          13
+        ],
+        [
+          77368.2293,
+          22.8,
+          741138432,
+          13
+        ],
+        [
+          77368.338359,
+          23.115,
+          741138432,
+          14
+        ],
+        [
+          77368.447213,
+          23.115,
+          741138432,
+          14
+        ],
+        [
+          77368.556453,
+          23.115,
+          741138432,
+          14
+        ],
+        [
+          77368.665476,
+          23.115,
+          741138432,
+          14
+        ],
+        [
+          77368.774,
+          23.115,
+          741138432,
+          14
+        ],
+        [
+          77368.883725,
+          23.267,
+          741138432,
+          15
+        ],
+        [
+          77368.993945,
+          23.267,
+          741138432,
+          15
+        ],
+        [
+          77369.104423,
+          23.267,
+          741138432,
+          15
+        ],
+        [
+          77369.213163,
+          23.267,
+          741138432,
+          15
+        ],
+        [
+          77369.321141,
+          23.267,
+          736845824,
+          15
+        ],
+        [
+          77369.429286,
+          23.261,
+          736845824,
+          15
+        ],
+        [
+          77369.536315,
+          23.261,
+          726843392,
+          15
+        ],
+        [
+          77369.646495,
+          23.261,
+          726843392,
+          15
+        ],
+        [
+          77369.755547,
+          23.261,
+          726843392,
+          15
+        ],
+        [
+          77369.865377,
+          10.324,
+          726843392,
+          0
+        ],
+        [
+          77369.975654,
+          10.324,
+          718225408,
+          0
+        ],
+        [
+          77370.084082,
+          10.324,
+          718225408,
+          0
+        ],
+        [
+          77370.192759,
+          10.324,
+          718225408,
+          0
+        ],
+        [
+          77370.301148,
+          10.324,
+          718225408,
+          0
+        ],
+        [
+          77370.409103,
+          23.457,
+          718225408,
+          14
+        ],
+        [
+          77370.519501,
+          23.457,
+          718225408,
+          14
+        ],
+        [
+          77370.627475,
+          23.457,
+          718225408,
+          14
+        ],
+        [
+          77370.737138,
+          23.457,
+          718225408,
+          14
+        ],
+        [
+          77370.846343,
+          23.556,
+          718225408,
+          14
+        ],
+        [
+          77370.954146,
+          23.556,
+          718225408,
+          14
+        ],
+        [
+          77371.063092,
+          23.556,
+          718225408,
+          14
+        ],
+        [
+          77371.171471,
+          23.556,
+          718225408,
+          14
+        ],
+        [
+          77371.280128,
+          23.556,
+          718225408,
+          14
+        ],
+        [
+          77371.390135,
+          24.571,
+          717963264,
+          16
+        ],
+        [
+          77371.496949,
+          24.571,
+          717963264,
+          16
+        ],
+        [
+          77371.608241,
+          24.571,
+          717963264,
+          16
+        ],
+        [
+          77371.717412,
+          24.571,
+          717963264,
+          16
+        ],
+        [
+          77371.828867,
+          24.571,
+          717963264,
+          16
+        ],
+        [
+          77371.93981,
+          23.661,
+          717963264,
+          18
+        ],
+        [
+          77372.04839,
+          23.661,
+          717963264,
+          18
+        ],
+        [
+          77372.158472,
+          23.661,
+          717635584,
+          18
+        ],
+        [
+          77372.267639,
+          23.661,
+          688406528,
+          18
+        ],
+        [
+          77372.377571,
+          23.462,
+          669073408,
+          32
+        ],
+        [
+          77372.486468,
+          23.462,
+          669073408,
+          32
+        ],
+        [
+          77372.596279,
+          23.462,
+          669073408,
+          32
+        ],
+        [
+          77372.706367,
+          23.462,
+          669073408,
+          32
+        ],
+        [
+          77372.813077,
+          23.462,
+          669073408,
+          32
+        ],
+        [
+          77372.922481,
+          23.443,
+          669401088,
+          23
+        ],
+        [
+          77373.031497,
+          23.443,
+          669401088,
+          23
+        ],
+        [
+          77373.14087,
+          23.443,
+          669401088,
+          23
+        ],
+        [
+          77373.250929,
+          23.443,
+          669401088,
+          23
+        ],
+        [
+          77373.360278,
+          23.813,
+          669401088,
+          25
+        ],
+        [
+          77373.467494,
+          23.813,
+          669401088,
+          25
+        ],
+        [
+          77373.576495,
+          23.813,
+          669401088,
+          25
+        ],
+        [
+          77373.686216,
+          23.813,
+          669401088,
+          25
+        ],
+        [
+          77373.795208,
+          23.813,
+          669401088,
+          25
+        ],
+        [
+          77373.903874,
+          22.099,
+          669401088,
+          19
+        ],
+        [
+          77374.012196,
+          22.099,
+          669401088,
+          19
+        ],
+        [
+          77374.122795,
+          22.099,
+          669401088,
+          19
+        ],
+        [
+          77374.23095,
+          22.099,
+          665075712,
+          19
+        ],
+        [
+          77374.339753,
+          22.099,
+          665075712,
+          19
+        ],
+        [
+          77374.448472,
+          21.271,
+          665075712,
+          22
+        ],
+        [
+          77374.558071,
+          21.271,
+          665075712,
+          22
+        ],
+        [
+          77374.667355,
+          21.271,
+          665075712,
+          22
+        ],
+        [
+          77374.777161,
+          21.271,
+          665075712,
+          22
+        ],
+        [
+          77374.886309,
+          20.736,
+          665075712,
+          21
+        ],
+        [
+          77374.994525,
+          20.736,
+          665075712,
+          21
+        ],
+        [
+          77375.104507,
+          20.736,
+          665075712,
+          21
+        ],
+        [
+          77375.213403,
+          20.736,
+          665075712,
+          21
+        ],
+        [
+          77375.323752,
+          20.736,
+          665075712,
+          21
+        ],
+        [
+          77375.433128,
+          19.166,
+          665075712,
+          24
+        ],
+        [
+          77375.543418,
+          19.166,
+          665075712,
+          24
+        ],
+        [
+          77375.653465,
+          19.166,
+          665075712,
+          24
+        ],
+        [
+          77375.763488,
+          19.166,
+          665075712,
+          24
+        ],
+        [
+          77375.873068,
+          19.774,
+          665075712,
+          22
+        ],
+        [
+          77375.982849,
+          19.774,
+          665075712,
+          22
+        ],
+        [
+          77376.09191,
+          19.774,
+          665075712,
+          22
+        ],
+        [
+          77376.200528,
+          19.774,
+          665075712,
+          22
+        ],
+        [
+          77376.309483,
+          19.774,
+          665075712,
+          22
+        ],
+        [
+          77376.41859,
+          19.819,
+          665075712,
+          23
+        ],
+        [
+          77376.527442,
+          19.819,
+          665075712,
+          23
+        ],
+        [
+          77376.636074,
+          19.819,
+          669270016,
+          23
+        ],
+        [
+          77376.745633,
+          19.819,
+          669270016,
+          23
+        ],
+        [
+          77376.855199,
+          21.139,
+          669270016,
+          20
+        ],
+        [
+          77376.965225,
+          21.139,
+          669270016,
+          20
+        ],
+        [
+          77377.073902,
+          21.139,
+          669270016,
+          20
+        ],
+        [
+          77377.184077,
+          21.139,
+          669728768,
+          20
+        ],
+        [
+          77377.294468,
+          21.139,
+          682311680,
+          20
+        ],
+        [
+          77377.402126,
+          22.762,
+          686440448,
+          12
+        ],
+        [
+          77377.510079,
+          22.762,
+          686964736,
+          12
+        ],
+        [
+          77377.618733,
+          22.762,
+          686964736,
+          12
+        ],
+        [
+          77377.729049,
+          22.762,
+          692404224,
+          12
+        ],
+        [
+          77377.838623,
+          22.762,
+          701612032,
+          12
+        ],
+        [
+          77377.946616,
+          23.766,
+          701612032,
+          32
+        ],
+        [
+          77378.055297,
+          23.766,
+          701612032,
+          32
+        ],
+        [
+          77378.163684,
+          23.766,
+          701841408,
+          32
+        ],
+        [
+          77378.273703,
+          23.766,
+          701906944,
+          32
+        ],
+        [
+          77378.384092,
+          23.294,
+          702038016,
+          24
+        ],
+        [
+          77378.493587,
+          23.294,
+          702824448,
+          24
+        ],
+        [
+          77378.604053,
+          23.294,
+          702889984,
+          24
+        ],
+        [
+          77378.712494,
+          23.294,
+          703086592,
+          24
+        ],
+        [
+          77378.820528,
+          23.294,
+          703152128,
+          24
+        ],
+        [
+          77378.928286,
+          23.687,
+          703217664,
+          39
+        ],
+        [
+          77379.038122,
+          23.687,
+          703348736,
+          39
+        ],
+        [
+          77379.148247,
+          23.687,
+          703414272,
+          39
+        ],
+        [
+          77379.256284,
+          23.687,
+          703545344,
+          39
+        ],
+        [
+          77379.366713,
+          26.507,
+          703610880,
+          25
+        ],
+        [
+          77379.476042,
+          26.507,
+          703676416,
+          25
+        ],
+        [
+          77379.586482,
+          26.507,
+          703807488,
+          25
+        ],
+        [
+          77379.695312,
+          26.507,
+          703873024,
+          25
+        ],
+        [
+          77379.802867,
+          26.507,
+          703938560,
+          25
+        ],
+        [
+          77379.912361,
+          32.338,
+          703938560,
+          25
+        ],
+        [
+          77380.018823,
+          32.338,
+          703938560,
+          25
+        ],
+        [
+          77380.129244,
+          32.338,
+          703938560,
+          25
+        ],
+        [
+          77380.238085,
+          32.338,
+          703938560,
+          25
+        ],
+        [
+          77380.346723,
+          26.784,
+          703938560,
+          30
+        ],
+        [
+          77380.456326,
+          26.784,
+          704856064,
+          30
+        ],
+        [
+          77380.565396,
+          26.784,
+          704856064,
+          30
+        ],
+        [
+          77380.674408,
+          26.784,
+          704856064,
+          30
+        ],
+        [
+          77380.782844,
+          26.784,
+          704856064,
+          30
+        ],
+        [
+          77380.891908,
+          27.218,
+          704856064,
+          30
+        ],
+        [
+          77380.999242,
+          27.218,
+          704856064,
+          30
+        ],
+        [
+          77381.108149,
+          27.218,
+          704856064,
+          30
+        ],
+        [
+          77381.218033,
+          27.218,
+          704856064,
+          30
+        ],
+        [
+          77381.329026,
+          27.218,
+          704856064,
+          30
+        ],
+        [
+          77381.436803,
+          17.831,
+          715079680,
+          30
+        ],
+        [
+          77381.545706,
+          17.831,
+          715276288,
+          30
+        ],
+        [
+          77381.655209,
+          17.831,
+          715276288,
+          30
+        ],
+        [
+          77381.764647,
+          17.831,
+          715276288,
+          30
+        ],
+        [
+          77381.873075,
+          23.075,
+          715276288,
+          28
+        ],
+        [
+          77381.98347,
+          23.075,
+          715276288,
+          28
+        ],
+        [
+          77382.093197,
+          23.075,
+          715276288,
+          28
+        ],
+        [
+          77382.204021,
+          23.075,
+          715276288,
+          28
+        ],
+        [
+          77382.31548,
+          23.075,
+          715276288,
+          28
+        ],
+        [
+          77382.423593,
+          24.967,
+          715276288,
+          23
+        ],
+        [
+          77382.53382,
+          24.967,
+          715276288,
+          23
+        ],
+        [
+          77382.642774,
+          24.967,
+          715276288,
+          23
+        ],
+        [
+          77382.753745,
+          24.967,
+          715276288,
+          23
+        ],
+        [
+          77382.866245,
+          22.592,
+          715276288,
+          18
+        ],
+        [
+          77382.975547,
+          22.592,
+          715276288,
+          18
+        ],
+        [
+          77383.083318,
+          22.592,
+          715276288,
+          18
+        ],
+        [
+          77383.191813,
+          22.592,
+          715276288,
+          18
+        ],
+        [
+          77383.301424,
+          22.592,
+          715276288,
+          18
+        ],
+        [
+          77383.411281,
+          20.361,
+          715276288,
+          22
+        ],
+        [
+          77383.521093,
+          20.361,
+          715276288,
+          22
+        ],
+        [
+          77383.630643,
+          20.361,
+          715276288,
+          22
+        ],
+        [
+          77383.741141,
+          20.361,
+          715276288,
+          22
+        ],
+        [
+          77383.849199,
+          20.361,
+          715276288,
+          22
+        ],
+        [
+          77383.957517,
+          19.594,
+          715276288,
+          22
+        ],
+        [
+          77384.067668,
+          19.594,
+          714948608,
+          22
+        ],
+        [
+          77384.174124,
+          19.594,
+          714522624,
+          22
+        ],
+        [
+          77384.282658,
+          19.594,
+          714522624,
+          22
+        ],
+        [
+          77384.392148,
+          20.582,
+          714522624,
+          17
+        ],
+        [
+          77384.502387,
+          20.582,
+          714522624,
+          17
+        ],
+        [
+          77384.611921,
+          20.582,
+          714522624,
+          17
+        ],
+        [
+          77384.720857,
+          20.582,
+          714522624,
+          17
+        ],
+        [
+          77384.83075,
+          20.582,
+          714522624,
+          17
+        ],
+        [
+          77384.940181,
+          20.87,
+          714522624,
+          21
+        ],
+        [
+          77385.047889,
+          20.87,
+          711606272,
+          21
+        ],
+        [
+          77385.158324,
+          20.87,
+          703217664,
+          21
+        ],
+        [
+          77385.267195,
+          20.87,
+          694435840,
+          21
+        ],
+        [
+          77385.378096,
+          18.419,
+          694435840,
+          29
+        ],
+        [
+          77385.487196,
+          18.419,
+          694435840,
+          29
+        ],
+        [
+          77385.599183,
+          18.419,
+          694435840,
+          29
+        ],
+        [
+          77385.708948,
+          18.419,
+          694435840,
+          29
+        ],
+        [
+          77385.816648,
+          18.419,
+          694435840,
+          29
+        ],
+        [
+          77385.925983,
+          18.89,
+          694435840,
+          21
+        ],
+        [
+          77386.035292,
+          18.89,
+          694435840,
+          21
+        ],
+        [
+          77386.144073,
+          18.89,
+          694435840,
+          21
+        ],
+        [
+          77386.253913,
+          18.89,
+          694435840,
+          21
+        ],
+        [
+          77386.362476,
+          20.414,
+          694435840,
+          21
+        ],
+        [
+          77386.469181,
+          20.414,
+          694435840,
+          21
+        ],
+        [
+          77386.578975,
+          20.414,
+          693649408,
+          21
+        ],
+        [
+          77386.688531,
+          20.414,
+          678117376,
+          21
+        ],
+        [
+          77386.798031,
+          20.414,
+          678117376,
+          21
+        ],
+        [
+          77386.906091,
+          19.66,
+          678117376,
+          24
+        ],
+        [
+          77387.015242,
+          19.66,
+          678117376,
+          24
+        ],
+        [
+          77387.125493,
+          19.66,
+          678117376,
+          24
+        ],
+        [
+          77387.235486,
+          19.66,
+          678117376,
+          24
+        ],
+        [
+          77387.345616,
+          19.66,
+          678117376,
+          24
+        ],
+        [
+          77387.454035,
+          21.048,
+          678117376,
+          22
+        ],
+        [
+          77387.564187,
+          21.048,
+          678117376,
+          22
+        ],
+        [
+          77387.672659,
+          21.048,
+          673726464,
+          22
+        ],
+        [
+          77387.781813,
+          21.048,
+          677920768,
+          22
+        ],
+        [
+          77387.890044,
+          21.027,
+          677920768,
+          42
+        ],
+        [
+          77387.996719,
+          21.027,
+          677920768,
+          42
+        ],
+        [
+          77388.105414,
+          21.027,
+          677920768,
+          42
+        ],
+        [
+          77388.213521,
+          21.027,
+          677920768,
+          42
+        ],
+        [
+          77388.324021,
+          21.027,
+          677920768,
+          42
+        ],
+        [
+          77388.433389,
+          20.741,
+          677920768,
+          22
+        ],
+        [
+          77388.544197,
+          20.741,
+          677920768,
+          22
+        ],
+        [
+          77388.653273,
+          20.741,
+          677920768,
+          22
+        ],
+        [
+          77388.76366,
+          20.741,
+          677920768,
+          22
+        ],
+        [
+          77388.872508,
+          20.657,
+          677920768,
+          21
+        ],
+        [
+          77388.980875,
+          20.657,
+          677920768,
+          21
+        ]
+      ],
+      "series_columns": [
+        "t_monotonic",
+        "power_w",
+        "mem_used_b",
+        "util_gpu_pct"
+      ]
+    },
+    "vram": {
+      "available": true,
+      "peak_used_gb": 0.69,
+      "mean_used_gb": 0.653,
+      "note": "NVML board-wide usage, includes other processes \u2014 not our allocation alone"
+    }
+  },
+  "extra": {
+    "phase5_embeddings": {
+      "clips": [
+        {
+          "clip": "lighting_drift",
+          "status": "built",
+          "shape": [
+            720,
+            1024
+          ]
+        },
+        {
+          "clip": "mixed",
+          "status": "built",
+          "shape": [
+            720,
+            1024
+          ]
+        },
+        {
+          "clip": "object_events",
+          "status": "built",
+          "shape": [
+            720,
+            1024
+          ]
+        },
+        {
+          "clip": "rapid_motion",
+          "status": "built",
+          "shape": [
+            720,
+            1024
+          ]
+        },
+        {
+          "clip": "scene_cuts",
+          "status": "built",
+          "shape": [
+            720,
+            1024
+          ]
+        },
+        {
+          "clip": "static",
+          "status": "built",
+          "shape": [
+            720,
+            1024
+          ]
+        }
+      ],
+      "encoder": {
+        "name": "mobilenetv3_small_100_224@224-onnx",
+        "dim": 1024,
+        "input_size": 224,
+        "backend": "onnx",
+        "path": "models\\onnx\\mobilenetv3_small_100_224.onnx",
+        "providers": [
+          "CUDAExecutionProvider",
+          "CPUExecutionProvider"
+        ]
+      }
+    }
+  },
+  "events": {
+    "counts": {
+      "frames": 0,
+      "drops": 0,
+      "triggers": 0,
+      "vlm_calls": 0,
+      "answers": 0,
+      "accuracy_records": 0,
+      "truncated": false
+    },
+    "kept": true,
+    "drops": [],
+    "triggers": [],
+    "answers": [],
+    "vlm_calls": []
+  }
+}

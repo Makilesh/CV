@@ -34,14 +34,21 @@ jobs:
       - name: Install CPU-only dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r docker/requirements-eval.txt \
-            --extra-index-url https://download.pytorch.org/whl/cpu
+          # No --extra-index-url: the eval path needs no torch at all. On Linux the default
+          # PyPI torch wheel is the ~2.5 GB CUDA build, which this job must never pull.
+          pip install -r docker/requirements-eval.txt
 
       - name: Show what is being gated
         run: |
           echo "CPU-only. Gating correctness, not performance."
           echo "Excluded markers: gpu, webcam, vlm, slow"
-          python -c "import torch, cv2, numpy; print('torch', torch.__version__, '| cv2', cv2.__version__)"
+          python -c "import cv2, numpy; print('cv2', cv2.__version__)"
+          python - <<'PY'
+          import importlib.util
+          for m in ('torch', 'onnxruntime', 'timm', 'transformers'):
+              assert importlib.util.find_spec(m) is None, f'{m} leaked into the CPU-only job'
+          print('confirmed: no GPU stack installed')
+          PY
 
       - name: Correctness suite
         env:

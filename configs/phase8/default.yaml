@@ -1,0 +1,38 @@
+# Phase 8 — make or break the scheduler thesis.
+#
+# Phase 6 left the project unable to support its headline: at a matched budget a plain timer equals
+# or beats the embedding-novelty scheduler. 8a decides whether that is a THRESHOLD problem (novelty
+# separates events within a scene, but the useful cut-point differs per scene) or a SIGNAL problem
+# (event novelty sits inside the no-event distribution, so no cut-point works anywhere).
+
+# Frames after a state change during which the signal is expected to respond. The rolling reference
+# has a 2 s half-life, so a response should appear well inside 1 s.
+event_response_frames: 30
+
+# Frames on either side of an event window excluded from the "quiet" set, so a decaying response is
+# not counted as background.
+quiet_margin_frames: 30
+
+# The bar each threshold must clear when comparing global vs per-clip optima. 0.99 rather than 1.0:
+# requiring literal perfection makes the comparison hostage to a single frame.
+validity_bar: 0.99
+
+# --- 8b: spatial (patch) novelty -------------------------------------------------------------
+# The 8a verdict was SIGNAL_PROBLEM: on object_events the event novelty (median 0.0732) sits below
+# the scene's own quiet background (p95 0.1238), so no threshold exists. Global pooling averages a
+# corner event away against a person moving through the middle of the frame.
+#
+# The fix keeps the encoder's feature map instead of pooling it, gives every spatial cell its own
+# rolling reference, and scores the strongest LOCAL change. Same forward pass — measured 2.95 ms
+# p50, slightly cheaper than the pooled encoder because it skips the classifier head.
+spatial_model: mobilenetv3_small_100
+spatial_onnx_path: models/onnx/mobilenetv3_small_100_spatial_224.onnx
+spatial_input_size: 224
+
+# Mean over the k most-changed cells of the 7x7 grid. k=1 would fire on single-cell sensor noise;
+# k=49 is just global pooling again. 3 of 49 stays local while needing more than one noisy cell.
+patch_top_k: 3
+
+# Which fast-tier signal the diagnosis evaluates: pooled (Phase 2 default) or patch (Phase 8b).
+signal: pooled
+adaptive_window_s: 8.0

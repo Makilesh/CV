@@ -1,0 +1,890 @@
+{
+  "schema_version": 1,
+  "run": {
+    "name": "phase4_make_clips",
+    "status": "completed",
+    "failure": null,
+    "duration_requested_s": 600.0,
+    "duration_actual_s": 7.5902,
+    "t_start_monotonic": 72753.206597,
+    "started_utc": "2026-08-08T06:19:14Z",
+    "wall_anchor": {
+      "monotonic": 72751.5187722,
+      "utc": "2026-08-08T06:19:14Z",
+      "unix": 1786169954.5294328
+    },
+    "notes": [
+      "run ended early: step() returned False"
+    ]
+  },
+  "environment": {
+    "python": "3.12.10",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "seed": 1337,
+    "peripheral_version": "0.1.0",
+    "git_commit": "411aec2",
+    "gpu_name": "NVIDIA GeForce RTX 5070 Ti Laptop GPU",
+    "gpu_vram_gb": 11.94,
+    "torch": "2.11.0+cu128",
+    "cuda": "12.8",
+    "gpu_capability": "12.0"
+  },
+  "config": {
+    "capture": {
+      "source": "webcam",
+      "device_index": 0,
+      "backend": "CAP_DSHOW",
+      "width": 640,
+      "height": 480,
+      "fourcc": "MJPG",
+      "target_fps": 30.0,
+      "warmup_frames": 5,
+      "auto_exposure": 0.25,
+      "exposure": -5.0
+    },
+    "telemetry": {
+      "power_sample_hz": 10.0,
+      "keep_events": true,
+      "max_events": 500000
+    },
+    "scheduler": {
+      "policy": "none"
+    },
+    "pipeline": {
+      "policy": "drop_oldest",
+      "capture_q_size": 4,
+      "vlm_q_size": 2,
+      "answer_q_size": 8,
+      "queue_sample_hz": 20.0,
+      "prompt": "Describe what you see in one short sentence.",
+      "max_tokens": 32
+    },
+    "vlm": {
+      "name": "Qwen3-VL-4B-Instruct-Q8_0",
+      "bench_label": "Qwen3-VL-4B Q8_0",
+      "binary": "vendor/llama.cpp/llama-server.exe",
+      "model": "models/Qwen3-VL-4B/Qwen3VL-4B-Instruct-Q8_0.gguf",
+      "mmproj": "models/Qwen3-VL-4B/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf",
+      "host": "127.0.0.1",
+      "port": 8080,
+      "n_gpu_layers": 99,
+      "ctx_size": 4096,
+      "jpeg_quality": 85,
+      "autostart": true,
+      "startup_timeout_s": 300.0,
+      "extra_args": [
+        "--cache-reuse",
+        "256"
+      ]
+    },
+    "fasttier": {
+      "encoder": "onnx",
+      "model": "mobilenetv3_small_100",
+      "onnx_path": "models/onnx/mobilenetv3_small_100_224.onnx",
+      "input_size": 224,
+      "dtype": "fp16",
+      "device": "cuda",
+      "clip_norm": false,
+      "downsample_size": 32,
+      "providers": null,
+      "motion_size": 64,
+      "half_life_s": 2.0,
+      "keep_embedding": false
+    },
+    "encoder_bench": {
+      "clip": "data/clips/desk_60s.mp4",
+      "n_frames": 24,
+      "frame_stride": 60,
+      "latency_reps": 200,
+      "warmup": 20,
+      "candidates": [
+        {
+          "label": "downsample32 (control, no network)",
+          "kind": "downsample",
+          "size": 32
+        },
+        {
+          "label": "mobilenetv3_small@224 torch fp16",
+          "kind": "torch",
+          "model": "mobilenetv3_small_100",
+          "input_size": 224,
+          "dtype": "fp16"
+        },
+        {
+          "label": "mobilenetv3_small@224 onnx",
+          "kind": "onnx",
+          "model": "mobilenetv3_small_100",
+          "input_size": 224
+        },
+        {
+          "label": "dinov2_vits14@224 torch fp16",
+          "kind": "torch",
+          "model": "vit_small_patch14_dinov2.lvd142m",
+          "input_size": 224,
+          "dtype": "fp16"
+        },
+        {
+          "label": "dinov2_vits14@224 onnx",
+          "kind": "onnx",
+          "model": "vit_small_patch14_dinov2.lvd142m",
+          "input_size": 224
+        },
+        {
+          "label": "clip_vitb32@224 torch fp16",
+          "kind": "torch",
+          "model": "vit_base_patch32_clip_224.openai",
+          "input_size": 224,
+          "dtype": "fp16",
+          "clip_norm": true
+        },
+        {
+          "label": "clip_vitb32@224 onnx",
+          "kind": "onnx",
+          "model": "vit_base_patch32_clip_224.openai",
+          "input_size": 224,
+          "clip_norm": true
+        }
+      ]
+    },
+    "vlm_bench": {
+      "max_foreign_vram_gb": 1.5,
+      "clip": "data/clips/desk_60s.mp4",
+      "n_frames": 20,
+      "frame_stride": 90,
+      "warmup": 2,
+      "max_tokens": 48,
+      "prompt": "Describe what you see in one short sentence.",
+      "configs": [
+        {
+          "label": "SmolVLM2-500M f16",
+          "family": "SmolVLM2-500M",
+          "quant": "f16",
+          "params": "0.5B",
+          "model": "models/SmolVLM2-500M/SmolVLM2-500M-Video-Instruct-f16.gguf",
+          "mmproj": "models/SmolVLM2-500M/mmproj-SmolVLM2-500M-Video-Instruct-f16.gguf"
+        },
+        {
+          "label": "SmolVLM2-500M Q8_0",
+          "family": "SmolVLM2-500M",
+          "quant": "Q8_0",
+          "params": "0.5B",
+          "model": "models/SmolVLM2-500M/SmolVLM2-500M-Video-Instruct-Q8_0.gguf",
+          "mmproj": "models/SmolVLM2-500M/mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "SmolVLM2-2.2B Q8_0",
+          "family": "SmolVLM2-2.2B",
+          "quant": "Q8_0",
+          "params": "2.2B",
+          "model": "models/SmolVLM2-2.2B/SmolVLM2-2.2B-Instruct-Q8_0.gguf",
+          "mmproj": "models/SmolVLM2-2.2B/mmproj-SmolVLM2-2.2B-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "SmolVLM2-2.2B Q4_K_M",
+          "family": "SmolVLM2-2.2B",
+          "quant": "Q4_K_M",
+          "params": "2.2B",
+          "model": "models/SmolVLM2-2.2B/SmolVLM2-2.2B-Instruct-Q4_K_M.gguf",
+          "mmproj": "models/SmolVLM2-2.2B/mmproj-SmolVLM2-2.2B-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "Qwen3-VL-2B Q8_0",
+          "family": "Qwen3-VL-2B",
+          "quant": "Q8_0",
+          "params": "2B",
+          "model": "models/Qwen3-VL-2B/Qwen3VL-2B-Instruct-Q8_0.gguf",
+          "mmproj": "models/Qwen3-VL-2B/mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "Qwen3-VL-2B Q4_K_M",
+          "family": "Qwen3-VL-2B",
+          "quant": "Q4_K_M",
+          "params": "2B",
+          "model": "models/Qwen3-VL-2B/Qwen3VL-2B-Instruct-Q4_K_M.gguf",
+          "mmproj": "models/Qwen3-VL-2B/mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "Qwen3-VL-4B Q8_0",
+          "family": "Qwen3-VL-4B",
+          "quant": "Q8_0",
+          "params": "4B",
+          "model": "models/Qwen3-VL-4B/Qwen3VL-4B-Instruct-Q8_0.gguf",
+          "mmproj": "models/Qwen3-VL-4B/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "Qwen3-VL-4B Q4_K_M",
+          "family": "Qwen3-VL-4B",
+          "quant": "Q4_K_M",
+          "params": "4B",
+          "model": "models/Qwen3-VL-4B/Qwen3VL-4B-Instruct-Q4_K_M.gguf",
+          "mmproj": "models/Qwen3-VL-4B/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf"
+        }
+      ]
+    },
+    "kv_reuse": {
+      "model": "models/Qwen3-VL-4B/Qwen3VL-4B-Instruct-Q8_0.gguf",
+      "mmproj": "models/Qwen3-VL-4B/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf",
+      "clip": "data/clips/desk_60s.mp4",
+      "n_frames": 40,
+      "frame_stride": 45,
+      "reps": 1,
+      "warmup": 3,
+      "max_tokens": 48,
+      "prompt": "Describe what you see in one short sentence.",
+      "arms": [
+        {
+          "label": "A image-first, no reuse",
+          "image_first": true,
+          "stream": true,
+          "server_args": []
+        },
+        {
+          "label": "B text-first, slot cache",
+          "image_first": false,
+          "stream": true,
+          "server_args": []
+        },
+        {
+          "label": "C text-first, --cache-reuse 256",
+          "image_first": false,
+          "stream": true,
+          "server_args": [
+            "--cache-reuse",
+            "256"
+          ]
+        },
+        {
+          "label": "D text-first, non-streaming",
+          "image_first": false,
+          "stream": false,
+          "server_args": [
+            "--cache-reuse",
+            "256"
+          ]
+        }
+      ]
+    },
+    "hf_reference": {
+      "model_id": "Qwen/Qwen3-VL-4B-Instruct",
+      "quant_type": "nf4",
+      "double_quant": true,
+      "clip": "data/clips/desk_60s.mp4",
+      "n_frames": 20,
+      "frame_stride": 90,
+      "max_tokens": 48,
+      "prompt": "Describe what you see in one short sentence.",
+      "compare_gguf": true
+    },
+    "phase4": {
+      "base_footage": "data/clips/desk_60s.mp4",
+      "clip_dir": "data/eval_clips",
+      "trace_dir": "data/traces",
+      "clip_duration_s": 24.0,
+      "clip_fps": 30.0,
+      "clips": [
+        {
+          "name": "static",
+          "recipe": "static"
+        },
+        {
+          "name": "object_events",
+          "recipe": "object_events"
+        },
+        {
+          "name": "lighting_drift",
+          "recipe": "lighting_drift"
+        },
+        {
+          "name": "rapid_motion",
+          "recipe": "rapid_motion"
+        },
+        {
+          "name": "mixed",
+          "recipe": "mixed"
+        },
+        {
+          "name": "scene_cuts",
+          "recipe": "scene_cuts"
+        }
+      ],
+      "held_out_clips": [
+        "lighting_drift",
+        "mixed"
+      ],
+      "prompt": "Describe what you see in one short sentence.",
+      "max_tokens": 32,
+      "rebuild_traces": false,
+      "min_gap_s": 0.3,
+      "staleness_half_life_s": 3.0,
+      "warmup_frames": 15
+    },
+    "seed": 1337,
+    "run": {
+      "duration_s": 600.0,
+      "headless": true,
+      "metrics_out": "results\\phase4_clips.json"
+    },
+    "record": {
+      "path": "data/clips/clip.mp4",
+      "fourcc": "mp4v"
+    },
+    "paths": {
+      "results_dir": "results",
+      "data_dir": "data",
+      "models_dir": "models"
+    }
+  },
+  "definitions": {
+    "t0": "Frame timestamps are taken with time.perf_counter() at the instant OpenCV returns the frame \u2014 NOT true photon arrival. Sensor exposure and driver/USB transport add an unmeasured constant offset, so photon-to-answer latency reported here is a LOWER BOUND.",
+    "photon_to_first_token_ms": "t(first generated token of the answer) - t0(frame that triggered the VLM call). Includes preprocessing, vision encoding, prefill and any IPC \u2014 never model-only time.",
+    "photon_to_answer_ms": "t(final token of the answer) - t0(frame that triggered the VLM call). Same inclusions.",
+    "answer_staleness_ms": "t(answer emitted) - t0(frame whose evidence backs that answer). For a cache hit this is the age of the cached scene evidence, not the age of the cache entry.",
+    "false_trigger_rate": "Fraction of VLM invocations fired on frames externally labelled as carrying no semantic change. Requires ground-truth labels; null when the run has none.",
+    "accuracy_vs_oracle": "Agreement with the per-frame oracle (VLM invoked on every frame) on the same query timeline. Null unless an oracle run was supplied.",
+    "percentiles": "numpy.percentile with linear interpolation over the full population of the run (no warmup discarded unless the run config says so).",
+    "energy_j": "Trapezoidal integration of NVML power samples over the measured window. 'marginal' subtracts the idle baseline measured before the workload started.",
+    "null_vs_zero": "null means NOT MEASURED. 0 means measured and the value was zero. They are never interchangeable."
+  },
+  "metrics": {
+    "frames_captured": 0,
+    "frames_dropped": 0,
+    "drop_rate": null,
+    "achieved_fps": 0.0,
+    "capture_interval_ms": null,
+    "stages_ms": null,
+    "queue_depth": null,
+    "photon_to_first_token_ms": null,
+    "photon_to_answer_ms": null,
+    "vlm_calls": 0,
+    "vlm_calls_per_min": 0.0,
+    "answer_staleness_ms": null,
+    "accuracy_vs_oracle": null,
+    "false_trigger_rate": null,
+    "trigger_count": null,
+    "power": {
+      "available": true,
+      "error": null,
+      "driver": "592.01",
+      "power_limit_w": 95.0,
+      "baseline_power_w": 3.91,
+      "n_samples": 69,
+      "sample_hz": 10.0,
+      "mean_w": 4.344,
+      "peak_w": 4.786,
+      "energy_j": 32.677,
+      "energy_marginal_j": 3.275,
+      "energy_per_query_j": null,
+      "energy_marginal_per_query_j": null,
+      "mean_util_pct": 0.0,
+      "peak_temp_c": 45,
+      "series": [
+        [
+          72753.206842,
+          4.181,
+          352190464,
+          0
+        ],
+        [
+          72753.315902,
+          4.181,
+          352190464,
+          0
+        ],
+        [
+          72753.427946,
+          4.181,
+          352190464,
+          0
+        ],
+        [
+          72753.538504,
+          4.181,
+          352190464,
+          0
+        ],
+        [
+          72753.65047,
+          4.767,
+          352190464,
+          0
+        ],
+        [
+          72753.760357,
+          4.767,
+          352190464,
+          0
+        ],
+        [
+          72753.872457,
+          4.767,
+          352190464,
+          0
+        ],
+        [
+          72753.983564,
+          4.767,
+          352190464,
+          0
+        ],
+        [
+          72754.094629,
+          4.767,
+          352190464,
+          0
+        ],
+        [
+          72754.205655,
+          4.786,
+          352190464,
+          0
+        ],
+        [
+          72754.313683,
+          4.786,
+          352190464,
+          0
+        ],
+        [
+          72754.425669,
+          4.786,
+          352190464,
+          0
+        ],
+        [
+          72754.536277,
+          4.786,
+          352190464,
+          0
+        ],
+        [
+          72754.648337,
+          4.786,
+          352190464,
+          0
+        ],
+        [
+          72754.759178,
+          4.786,
+          352190464,
+          0
+        ],
+        [
+          72754.869181,
+          4.786,
+          352190464,
+          0
+        ],
+        [
+          72754.979293,
+          4.786,
+          352190464,
+          0
+        ],
+        [
+          72755.089139,
+          4.786,
+          352190464,
+          0
+        ],
+        [
+          72755.199782,
+          3.996,
+          352190464,
+          0
+        ],
+        [
+          72755.311845,
+          3.996,
+          352190464,
+          0
+        ],
+        [
+          72755.423861,
+          3.996,
+          352190464,
+          0
+        ],
+        [
+          72755.533989,
+          3.996,
+          352190464,
+          0
+        ],
+        [
+          72755.644995,
+          3.996,
+          352190464,
+          0
+        ],
+        [
+          72755.756871,
+          3.996,
+          352190464,
+          0
+        ],
+        [
+          72755.867382,
+          3.996,
+          352190464,
+          0
+        ],
+        [
+          72755.977484,
+          3.996,
+          352190464,
+          0
+        ],
+        [
+          72756.086146,
+          3.996,
+          352190464,
+          0
+        ],
+        [
+          72756.196952,
+          4.334,
+          352190464,
+          0
+        ],
+        [
+          72756.308837,
+          4.334,
+          352190464,
+          0
+        ],
+        [
+          72756.418791,
+          4.334,
+          352190464,
+          0
+        ],
+        [
+          72756.527953,
+          4.334,
+          352190464,
+          0
+        ],
+        [
+          72756.639389,
+          4.334,
+          352190464,
+          0
+        ],
+        [
+          72756.74874,
+          4.334,
+          352190464,
+          0
+        ],
+        [
+          72756.858694,
+          4.334,
+          352190464,
+          0
+        ],
+        [
+          72756.96916,
+          4.334,
+          352190464,
+          0
+        ],
+        [
+          72757.078761,
+          4.334,
+          352190464,
+          0
+        ],
+        [
+          72757.189018,
+          4.13,
+          352190464,
+          0
+        ],
+        [
+          72757.299874,
+          4.13,
+          352190464,
+          0
+        ],
+        [
+          72757.41081,
+          4.13,
+          352190464,
+          0
+        ],
+        [
+          72757.521711,
+          4.13,
+          352190464,
+          0
+        ],
+        [
+          72757.632447,
+          4.13,
+          352190464,
+          0
+        ],
+        [
+          72757.744402,
+          4.13,
+          352190464,
+          0
+        ],
+        [
+          72757.855505,
+          4.13,
+          352190464,
+          0
+        ],
+        [
+          72757.965607,
+          4.13,
+          352190464,
+          0
+        ],
+        [
+          72758.076555,
+          4.13,
+          352190464,
+          0
+        ],
+        [
+          72758.186989,
+          4.307,
+          352190464,
+          0
+        ],
+        [
+          72758.297936,
+          4.307,
+          352190464,
+          0
+        ],
+        [
+          72758.40996,
+          4.307,
+          352190464,
+          0
+        ],
+        [
+          72758.521063,
+          4.307,
+          352190464,
+          0
+        ],
+        [
+          72758.631423,
+          4.307,
+          352190464,
+          0
+        ],
+        [
+          72758.739742,
+          4.307,
+          352190464,
+          0
+        ],
+        [
+          72758.849605,
+          4.307,
+          352190464,
+          0
+        ],
+        [
+          72758.961304,
+          4.307,
+          352190464,
+          0
+        ],
+        [
+          72759.072359,
+          4.307,
+          352190464,
+          0
+        ],
+        [
+          72759.184338,
+          4.384,
+          352190464,
+          0
+        ],
+        [
+          72759.294446,
+          4.384,
+          352190464,
+          0
+        ],
+        [
+          72759.404131,
+          4.384,
+          352190464,
+          0
+        ],
+        [
+          72759.512914,
+          4.384,
+          352190464,
+          0
+        ],
+        [
+          72759.624058,
+          4.384,
+          352190464,
+          0
+        ],
+        [
+          72759.734609,
+          4.384,
+          352190464,
+          0
+        ],
+        [
+          72759.844026,
+          4.384,
+          352190464,
+          0
+        ],
+        [
+          72759.954728,
+          4.384,
+          352190464,
+          0
+        ],
+        [
+          72760.065482,
+          4.384,
+          352190464,
+          0
+        ],
+        [
+          72760.174839,
+          4.291,
+          352190464,
+          0
+        ],
+        [
+          72760.283814,
+          4.291,
+          352190464,
+          0
+        ],
+        [
+          72760.394924,
+          4.291,
+          352190464,
+          0
+        ],
+        [
+          72760.505476,
+          4.291,
+          352190464,
+          0
+        ],
+        [
+          72760.615501,
+          4.291,
+          352190464,
+          0
+        ],
+        [
+          72760.726516,
+          4.291,
+          352190464,
+          0
+        ]
+      ],
+      "series_columns": [
+        "t_monotonic",
+        "power_w",
+        "mem_used_b",
+        "util_gpu_pct"
+      ]
+    },
+    "vram": {
+      "available": true,
+      "peak_used_gb": 0.328,
+      "mean_used_gb": 0.328,
+      "note": "NVML board-wide usage, includes other processes \u2014 not our allocation alone"
+    }
+  },
+  "extra": {
+    "phase4_clips": {
+      "base_footage": "data\\clips\\desk_60s.mp4",
+      "clip_dir": "data\\eval_clips",
+      "clips": [
+        {
+          "name": "static",
+          "path": "data/eval_clips/static.mp4",
+          "frames": 720,
+          "events": 0,
+          "semantic_events": 0,
+          "states": 1,
+          "purpose": "control: nothing happens"
+        },
+        {
+          "name": "object_events",
+          "path": "data/eval_clips/object_events.mp4",
+          "frames": 720,
+          "events": 3,
+          "semantic_events": 3,
+          "states": 4,
+          "purpose": "semantic events with a static camera and steady light"
+        },
+        {
+          "name": "lighting_drift",
+          "path": "data/eval_clips/lighting_drift.mp4",
+          "frames": 720,
+          "events": 1,
+          "semantic_events": 0,
+          "states": 1,
+          "purpose": "FALSE-TRIGGER PROBE: large lighting change, zero semantic change"
+        },
+        {
+          "name": "rapid_motion",
+          "path": "data/eval_clips/rapid_motion.mp4",
+          "frames": 720,
+          "events": 1,
+          "semantic_events": 0,
+          "states": 1,
+          "purpose": "FALSE-TRIGGER PROBE: large apparent motion, zero semantic change"
+        },
+        {
+          "name": "mixed",
+          "path": "data/eval_clips/mixed.mp4",
+          "frames": 720,
+          "events": 3,
+          "semantic_events": 2,
+          "states": 3,
+          "purpose": "lighting drift WITH real events \u2014 the discriminating case"
+        },
+        {
+          "name": "scene_cuts",
+          "path": "data/eval_clips/scene_cuts.mp4",
+          "frames": 720,
+          "events": 2,
+          "semantic_events": 2,
+          "states": 3,
+          "purpose": "hard scene cuts \u2014 an upper bound on how detectable an event can be"
+        }
+      ],
+      "note": "Events are composited onto real camera footage so the labels are exact by construction. This makes the lighting-drift and motion-without-event probes possible at all \u2014 certainty that NOTHING semantic happened is what hand annotation cannot provide. The cost is that a pasted object is an easier event than a subtle real one; Phase 6 adds real annotated data."
+    }
+  },
+  "events": {
+    "counts": {
+      "frames": 0,
+      "drops": 0,
+      "triggers": 0,
+      "vlm_calls": 0,
+      "answers": 0,
+      "accuracy_records": 0,
+      "truncated": false
+    },
+    "kept": true,
+    "drops": [],
+    "triggers": [],
+    "answers": [],
+    "vlm_calls": []
+  }
+}

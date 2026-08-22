@@ -21,6 +21,7 @@ know what its knob means.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections import deque
 from dataclasses import dataclass
 from typing import Any, Sequence
 
@@ -210,6 +211,84 @@ class InformationGainPolicy(TriggerPolicy):
         return [0.002, 0.005, 0.01, 0.02, 0.04, 0.07, 0.12, 0.2, 0.35]
 
 
+class AdaptiveNoveltyPolicy(TriggerPolicy):
+    """Fire on the most novel frames **relative to this scene's own recent distribution**.
+
+    Phase 8a found the ranking failure was a signal problem, and 8b's patch novelty fixed it —
+    leaving a threshold problem with 1.68x of headroom: the useful cut-point varies across scenes,
+    so any global constant is wrong somewhere.
+
+    The threshold here is a rolling **quantile** of the scene's own novelty, which makes it a rate
+    controller: `q = 0.98` fires on roughly the top 2% of frames whatever the scene's absolute
+    novelty scale happens to be. That is exactly the comparison the project needs, because it makes
+    the budget self-matching — at the *same* number of calls as a timer, does picking the most novel
+    frames beat picking evenly spaced ones?
+
+    A purely relative rule cannot tell "quiet scene" from "busy scene": it always fires on the top
+    q of *something*. That is a real property, not a bug to hide — on a genuinely static scene it
+    spends its budget on noise. `min_novelty` is the one absolute guard, and it is deliberately far
+    below any plausible event so it suppresses only flat-line scenes.
+    """
+
+    name = "adaptive_novelty"
+
+    def __init__(
+        self,
+        q: float,
+        window_s: float = 8.0,
+        min_gap_s: float = 0.3,
+        min_samples: int = 30,
+        min_novelty: float = 0.0,
+    ) -> None:
+        self.q = float(q)
+        self.window_s = float(window_s)
+        self.min_gap_s = float(min_gap_s)
+        self.min_samples = int(min_samples)
+        self.min_novelty = float(min_novelty)
+        self._hist: deque[tuple[float, float]] = deque()
+
+    def reset(self) -> None:
+        self._hist = deque()
+
+    def _threshold(self) -> float | None:
+        if len(self._hist) < self.min_samples:
+            return None
+        return float(np.quantile([v for _, v in self._hist], self.q))
+
+    def decide(self, ctx: "FrameContext") -> Decision:
+        # Observe first: the current frame belongs in the distribution it is judged against, or the
+        # threshold would lag the scene by one frame at every change.
+        self._hist.append((ctx.t, ctx.novelty))
+        cutoff = ctx.t - self.window_s
+        while self._hist and self._hist[0][0] < cutoff:
+            self._hist.popleft()
+
+        if ctx.t_last_call is None:
+            return Decision(True, ctx.novelty, "first frame")
+        if ctx.since_last_call < self.min_gap_s:
+            return Decision(False, ctx.novelty, "rate limited")
+
+        thr = self._threshold()
+        if thr is None:
+            return Decision(False, ctx.novelty, "window not filled")
+        if ctx.novelty < self.min_novelty:
+            return Decision(False, ctx.novelty, "below absolute floor")
+
+        fire = ctx.novelty >= thr
+        return Decision(fire, ctx.novelty, f"novelty {ctx.novelty:.4f} vs q{self.q:g}={thr:.4f}")
+
+    def describe(self) -> dict[str, Any]:
+        return {
+            "policy": self.name, "q": self.q, "window_s": self.window_s,
+            "min_gap_s": self.min_gap_s, "min_novelty": self.min_novelty,
+        }
+
+    @staticmethod
+    def operating_points() -> list[float]:
+        # Quantiles map almost directly onto call rate, so this spans dense to very sparse.
+        return [0.80, 0.90, 0.95, 0.97, 0.98, 0.99, 0.995, 0.998, 0.999]
+
+
 class LearnedPolicy(TriggerPolicy):
     """A small logistic model over fast-tier features, fit on training clips.
 
@@ -287,6 +366,8 @@ def build_policy(kind: str, value: float, **kwargs: Any) -> TriggerPolicy:
         return MotionThresholdPolicy(value, **kwargs)
     if kind == "embedding_novelty":
         return EmbeddingNoveltyPolicy(value, **kwargs)
+    if kind == "adaptive_novelty":
+        return AdaptiveNoveltyPolicy(value, **kwargs)
     if kind == "information_gain":
         return InformationGainPolicy(value, **kwargs)
     if kind == "learned":
@@ -297,6 +378,7 @@ def build_policy(kind: str, value: float, **kwargs: Any) -> TriggerPolicy:
 
 
 POLICY_KINDS = (
+    "adaptive_novelty",
     "fixed_interval",
     "motion_threshold",
     "embedding_novelty",

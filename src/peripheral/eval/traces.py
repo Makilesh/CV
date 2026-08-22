@@ -17,7 +17,7 @@ reused.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +44,9 @@ class ClipTrace:
     model: str
     prompt: str
     schema_version: int = TRACE_SCHEMA
+    #: Phase 8b patch novelty, when it has been computed. Kept beside the pooled signal so both
+    #: exist for identical frames and can be compared without a paired-run confound.
+    novelty_patch: np.ndarray | None = None
 
     def save(self, path: str | Path) -> Path:
         path = Path(path)
@@ -78,6 +81,7 @@ class ClipTrace:
         if meta.get("schema_version") != TRACE_SCHEMA:
             raise ValueError(f"trace schema mismatch for {path}")
         return ClipTrace(
+            novelty_patch=arr["novelty_patch"] if "novelty_patch" in arr else None,
             clip_name=meta["clip_name"],
             fps=meta["fps"],
             n_frames=meta["n_frames"],
@@ -90,6 +94,23 @@ class ClipTrace:
             model=meta["model"],
             prompt=meta["prompt"],
         )
+
+    def with_signal(self, signal: str) -> "ClipTrace":
+        """Return a view of this trace whose `novelty` is the requested signal.
+
+        Swapping the signal rather than teaching every policy about a second field means the whole
+        Phase 4 sweep, the simulator and the ablations compare pooled against spatial with
+        *identical* code paths — the comparison cannot be contaminated by a branch.
+        """
+        if signal in ("novelty", "pooled"):
+            return self
+        if signal in ("patch", "novelty_patch"):
+            if self.novelty_patch is None:
+                raise ValueError(
+                    f"{self.clip_name} has no patch novelty; run peripheral.cli.add_spatial_signals"
+                )
+            return replace(self, novelty=self.novelty_patch)
+        raise ValueError(f"unknown signal {signal!r}")
 
     @staticmethod
     def exists(path: str | Path) -> bool:

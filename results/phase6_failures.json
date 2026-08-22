@@ -1,0 +1,1452 @@
+{
+  "schema_version": 1,
+  "run": {
+    "name": "phase6_failure_analysis",
+    "status": "completed",
+    "failure": null,
+    "duration_requested_s": 300.0,
+    "duration_actual_s": 0.008,
+    "t_start_monotonic": 7684.508482,
+    "started_utc": "2026-08-12T12:41:32Z",
+    "wall_anchor": {
+      "monotonic": 7682.6057494,
+      "utc": "2026-08-12T12:41:32Z",
+      "unix": 1786538492.5985026
+    },
+    "notes": [
+      "run ended early: step() returned False"
+    ]
+  },
+  "environment": {
+    "python": "3.12.10",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "seed": 1337,
+    "peripheral_version": "0.1.0",
+    "git_commit": "c5e5587",
+    "gpu_name": "NVIDIA GeForce RTX 5070 Ti Laptop GPU",
+    "gpu_vram_gb": 11.94,
+    "torch": "2.11.0+cu128",
+    "cuda": "12.8",
+    "gpu_capability": "12.0"
+  },
+  "config": {
+    "capture": {
+      "source": "webcam",
+      "device_index": 0,
+      "backend": "CAP_DSHOW",
+      "width": 640,
+      "height": 480,
+      "fourcc": "MJPG",
+      "target_fps": 30.0,
+      "warmup_frames": 5,
+      "auto_exposure": 0.25,
+      "exposure": -5.0
+    },
+    "telemetry": {
+      "power_sample_hz": 10.0,
+      "keep_events": true,
+      "max_events": 500000
+    },
+    "scheduler": {
+      "policy": "none"
+    },
+    "pipeline": {
+      "policy": "drop_oldest",
+      "capture_q_size": 4,
+      "vlm_q_size": 2,
+      "answer_q_size": 8,
+      "queue_sample_hz": 20.0,
+      "prompt": "Describe what you see in one short sentence.",
+      "max_tokens": 32
+    },
+    "vlm": {
+      "name": "Qwen3-VL-4B-Instruct-Q8_0",
+      "bench_label": "Qwen3-VL-4B Q8_0",
+      "binary": "vendor/llama.cpp/llama-server.exe",
+      "model": "models/Qwen3-VL-4B/Qwen3VL-4B-Instruct-Q8_0.gguf",
+      "mmproj": "models/Qwen3-VL-4B/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf",
+      "host": "127.0.0.1",
+      "port": 8080,
+      "n_gpu_layers": 99,
+      "ctx_size": 4096,
+      "jpeg_quality": 85,
+      "autostart": true,
+      "startup_timeout_s": 300.0,
+      "extra_args": [
+        "--cache-reuse",
+        "256"
+      ]
+    },
+    "fasttier": {
+      "encoder": "onnx",
+      "model": "mobilenetv3_small_100",
+      "onnx_path": "models/onnx/mobilenetv3_small_100_224.onnx",
+      "input_size": 224,
+      "dtype": "fp16",
+      "device": "cuda",
+      "clip_norm": false,
+      "downsample_size": 32,
+      "providers": null,
+      "motion_size": 64,
+      "half_life_s": 2.0,
+      "keep_embedding": false
+    },
+    "encoder_bench": {
+      "clip": "data/clips/desk_60s.mp4",
+      "n_frames": 24,
+      "frame_stride": 60,
+      "latency_reps": 200,
+      "warmup": 20,
+      "candidates": [
+        {
+          "label": "downsample32 (control, no network)",
+          "kind": "downsample",
+          "size": 32
+        },
+        {
+          "label": "mobilenetv3_small@224 torch fp16",
+          "kind": "torch",
+          "model": "mobilenetv3_small_100",
+          "input_size": 224,
+          "dtype": "fp16"
+        },
+        {
+          "label": "mobilenetv3_small@224 onnx",
+          "kind": "onnx",
+          "model": "mobilenetv3_small_100",
+          "input_size": 224
+        },
+        {
+          "label": "dinov2_vits14@224 torch fp16",
+          "kind": "torch",
+          "model": "vit_small_patch14_dinov2.lvd142m",
+          "input_size": 224,
+          "dtype": "fp16"
+        },
+        {
+          "label": "dinov2_vits14@224 onnx",
+          "kind": "onnx",
+          "model": "vit_small_patch14_dinov2.lvd142m",
+          "input_size": 224
+        },
+        {
+          "label": "clip_vitb32@224 torch fp16",
+          "kind": "torch",
+          "model": "vit_base_patch32_clip_224.openai",
+          "input_size": 224,
+          "dtype": "fp16",
+          "clip_norm": true
+        },
+        {
+          "label": "clip_vitb32@224 onnx",
+          "kind": "onnx",
+          "model": "vit_base_patch32_clip_224.openai",
+          "input_size": 224,
+          "clip_norm": true
+        }
+      ]
+    },
+    "vlm_bench": {
+      "max_foreign_vram_gb": 1.5,
+      "clip": "data/clips/desk_60s.mp4",
+      "n_frames": 20,
+      "frame_stride": 90,
+      "warmup": 2,
+      "max_tokens": 48,
+      "prompt": "Describe what you see in one short sentence.",
+      "configs": [
+        {
+          "label": "SmolVLM2-500M f16",
+          "family": "SmolVLM2-500M",
+          "quant": "f16",
+          "params": "0.5B",
+          "model": "models/SmolVLM2-500M/SmolVLM2-500M-Video-Instruct-f16.gguf",
+          "mmproj": "models/SmolVLM2-500M/mmproj-SmolVLM2-500M-Video-Instruct-f16.gguf"
+        },
+        {
+          "label": "SmolVLM2-500M Q8_0",
+          "family": "SmolVLM2-500M",
+          "quant": "Q8_0",
+          "params": "0.5B",
+          "model": "models/SmolVLM2-500M/SmolVLM2-500M-Video-Instruct-Q8_0.gguf",
+          "mmproj": "models/SmolVLM2-500M/mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "SmolVLM2-2.2B Q8_0",
+          "family": "SmolVLM2-2.2B",
+          "quant": "Q8_0",
+          "params": "2.2B",
+          "model": "models/SmolVLM2-2.2B/SmolVLM2-2.2B-Instruct-Q8_0.gguf",
+          "mmproj": "models/SmolVLM2-2.2B/mmproj-SmolVLM2-2.2B-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "SmolVLM2-2.2B Q4_K_M",
+          "family": "SmolVLM2-2.2B",
+          "quant": "Q4_K_M",
+          "params": "2.2B",
+          "model": "models/SmolVLM2-2.2B/SmolVLM2-2.2B-Instruct-Q4_K_M.gguf",
+          "mmproj": "models/SmolVLM2-2.2B/mmproj-SmolVLM2-2.2B-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "Qwen3-VL-2B Q8_0",
+          "family": "Qwen3-VL-2B",
+          "quant": "Q8_0",
+          "params": "2B",
+          "model": "models/Qwen3-VL-2B/Qwen3VL-2B-Instruct-Q8_0.gguf",
+          "mmproj": "models/Qwen3-VL-2B/mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "Qwen3-VL-2B Q4_K_M",
+          "family": "Qwen3-VL-2B",
+          "quant": "Q4_K_M",
+          "params": "2B",
+          "model": "models/Qwen3-VL-2B/Qwen3VL-2B-Instruct-Q4_K_M.gguf",
+          "mmproj": "models/Qwen3-VL-2B/mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "Qwen3-VL-4B Q8_0",
+          "family": "Qwen3-VL-4B",
+          "quant": "Q8_0",
+          "params": "4B",
+          "model": "models/Qwen3-VL-4B/Qwen3VL-4B-Instruct-Q8_0.gguf",
+          "mmproj": "models/Qwen3-VL-4B/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "Qwen3-VL-4B Q4_K_M",
+          "family": "Qwen3-VL-4B",
+          "quant": "Q4_K_M",
+          "params": "4B",
+          "model": "models/Qwen3-VL-4B/Qwen3VL-4B-Instruct-Q4_K_M.gguf",
+          "mmproj": "models/Qwen3-VL-4B/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf"
+        }
+      ]
+    },
+    "kv_reuse": {
+      "model": "models/Qwen3-VL-4B/Qwen3VL-4B-Instruct-Q8_0.gguf",
+      "mmproj": "models/Qwen3-VL-4B/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf",
+      "clip": "data/clips/desk_60s.mp4",
+      "n_frames": 40,
+      "frame_stride": 45,
+      "reps": 1,
+      "warmup": 3,
+      "max_tokens": 48,
+      "prompt": "Describe what you see in one short sentence.",
+      "arms": [
+        {
+          "label": "A image-first, no reuse",
+          "image_first": true,
+          "stream": true,
+          "server_args": []
+        },
+        {
+          "label": "B text-first, slot cache",
+          "image_first": false,
+          "stream": true,
+          "server_args": []
+        },
+        {
+          "label": "C text-first, --cache-reuse 256",
+          "image_first": false,
+          "stream": true,
+          "server_args": [
+            "--cache-reuse",
+            "256"
+          ]
+        },
+        {
+          "label": "D text-first, non-streaming",
+          "image_first": false,
+          "stream": false,
+          "server_args": [
+            "--cache-reuse",
+            "256"
+          ]
+        }
+      ]
+    },
+    "hf_reference": {
+      "model_id": "Qwen/Qwen3-VL-4B-Instruct",
+      "quant_type": "nf4",
+      "double_quant": true,
+      "clip": "data/clips/desk_60s.mp4",
+      "n_frames": 20,
+      "frame_stride": 90,
+      "max_tokens": 48,
+      "prompt": "Describe what you see in one short sentence.",
+      "compare_gguf": true
+    },
+    "phase4": {
+      "base_footage": "data/clips/desk_60s.mp4",
+      "clip_dir": "data/eval_clips",
+      "trace_dir": "data/traces",
+      "clip_duration_s": 24.0,
+      "clip_fps": 30.0,
+      "clips": [
+        {
+          "name": "static",
+          "recipe": "static"
+        },
+        {
+          "name": "object_events",
+          "recipe": "object_events"
+        },
+        {
+          "name": "lighting_drift",
+          "recipe": "lighting_drift"
+        },
+        {
+          "name": "rapid_motion",
+          "recipe": "rapid_motion"
+        },
+        {
+          "name": "mixed",
+          "recipe": "mixed"
+        },
+        {
+          "name": "scene_cuts",
+          "recipe": "scene_cuts"
+        }
+      ],
+      "held_out_clips": [
+        "lighting_drift",
+        "mixed"
+      ],
+      "prompt": "Describe what you see in one short sentence.",
+      "max_tokens": 32,
+      "rebuild_traces": false,
+      "min_gap_s": 0.3,
+      "staleness_half_life_s": 3.0,
+      "warmup_frames": 15
+    },
+    "phase5": {
+      "policy_threshold": 0.12,
+      "cache_thresholds": [
+        0.5,
+        0.6,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.9,
+        0.95,
+        0.98,
+        0.999
+      ],
+      "max_staleness_s": 30.0,
+      "max_entries": 64,
+      "rebuild": false
+    },
+    "phase6": {
+      "clip": "data/eval_clips/mixed.mp4",
+      "replay_speed": 1.0,
+      "late_tolerance_ms": 50.0,
+      "query_every_s": 2.0,
+      "query_text": "Describe what you see in one short sentence.",
+      "max_tokens": 32,
+      "policy_kind": "embedding_novelty",
+      "policy_value": 0.12,
+      "use_fast_tier": true,
+      "ablations": [
+        {
+          "name": "full_system",
+          "policy_kind": "embedding_novelty",
+          "policy_value": 0.12,
+          "use_fast_tier": true,
+          "note": "the system as chosen in Phases 2-4"
+        },
+        {
+          "name": "fixed_interval_matched",
+          "policy_kind": "fixed_interval",
+          "policy_value": 0,
+          "match_budget": true,
+          "use_fast_tier": true,
+          "note": "scheduler replaced by a timer at an exactly matched call budget."
+        },
+        {
+          "name": "no_fast_tier",
+          "policy_kind": "fixed_interval",
+          "policy_value": 0,
+          "match_budget": true,
+          "use_fast_tier": false,
+          "note": "Removing the fast tier removes the scheduler's only input, so it necessarily degenerates to a timer. Identical to fixed_interval_matched by construction \u2014 which is itself the finding: without the fast tier there is no scheduler left to have.\n"
+        },
+        {
+          "name": "motion_only",
+          "policy_kind": "motion_threshold",
+          "policy_value": 0.015,
+          "use_fast_tier": true,
+          "note": "embedding replaced by pixel differencing \u2014 the motion-detector control"
+        },
+        {
+          "name": "oracle",
+          "policy_kind": "fixed_interval",
+          "policy_value": 0.0,
+          "use_fast_tier": true,
+          "note": "per-frame oracle \u2014 the upper bound, and unaffordable in real time"
+        }
+      ]
+    },
+    "streamingbench": {
+      "csv": "data/streamingbench/Real_Time_Visual_Understanding.csv",
+      "video_root": "data/streamingbench/videos",
+      "wall_clock_budget_s": 1500.0,
+      "max_tokens": 8
+    },
+    "demo": {
+      "policy_kind": "embedding_novelty",
+      "policy_value": 0.12,
+      "prompt": "Describe what you see in one short sentence.",
+      "max_tokens": 32,
+      "write_frames": null
+    },
+    "seed": 1337,
+    "run": {
+      "duration_s": 300.0,
+      "headless": true,
+      "metrics_out": "results\\phase6_failures.json"
+    },
+    "record": {
+      "path": "data/clips/clip.mp4",
+      "fourcc": "mp4v"
+    },
+    "paths": {
+      "results_dir": "results",
+      "data_dir": "data",
+      "models_dir": "models"
+    }
+  },
+  "definitions": {
+    "t0": "Frame timestamps are taken with time.perf_counter() at the instant OpenCV returns the frame \u2014 NOT true photon arrival. Sensor exposure and driver/USB transport add an unmeasured constant offset, so photon-to-answer latency reported here is a LOWER BOUND.",
+    "photon_to_first_token_ms": "t(first generated token of the answer) - t0(frame that triggered the VLM call). Includes preprocessing, vision encoding, prefill and any IPC \u2014 never model-only time.",
+    "photon_to_answer_ms": "t(final token of the answer) - t0(frame that triggered the VLM call). Same inclusions.",
+    "answer_staleness_ms": "t(answer emitted) - t0(frame whose evidence backs that answer). For a cache hit this is the age of the cached scene evidence, not the age of the cache entry.",
+    "false_trigger_rate": "Fraction of VLM invocations fired on frames externally labelled as carrying no semantic change. Requires ground-truth labels; null when the run has none.",
+    "accuracy_vs_oracle": "Agreement with the per-frame oracle (VLM invoked on every frame) on the same query timeline. Null unless an oracle run was supplied.",
+    "percentiles": "numpy.percentile with linear interpolation over the full population of the run (no warmup discarded unless the run config says so).",
+    "energy_j": "Trapezoidal integration of NVML power samples over the measured window. 'marginal' subtracts the idle baseline measured before the workload started.",
+    "null_vs_zero": "null means NOT MEASURED. 0 means measured and the value was zero. They are never interchangeable."
+  },
+  "metrics": {
+    "frames_captured": 0,
+    "frames_dropped": 0,
+    "drop_rate": null,
+    "achieved_fps": 0.0,
+    "capture_interval_ms": null,
+    "stages_ms": null,
+    "queue_depth": null,
+    "photon_to_first_token_ms": null,
+    "photon_to_answer_ms": null,
+    "vlm_calls": 0,
+    "vlm_calls_per_min": 0.0,
+    "answer_staleness_ms": null,
+    "accuracy_vs_oracle": null,
+    "false_trigger_rate": null,
+    "trigger_count": null,
+    "power": {
+      "available": true,
+      "error": "fewer than 2 samples",
+      "driver": "592.01",
+      "power_limit_w": 95.0,
+      "baseline_power_w": 4.2738,
+      "n_samples": 1,
+      "mean_w": null,
+      "peak_w": null,
+      "energy_j": null,
+      "energy_marginal_j": null,
+      "energy_per_query_j": null,
+      "energy_marginal_per_query_j": null
+    },
+    "vram": {
+      "available": true,
+      "peak_used_gb": 0.517,
+      "mean_used_gb": 0.517,
+      "note": "NVML board-wide usage, includes other processes \u2014 not our allocation alone"
+    }
+  },
+  "extra": {
+    "phase6_failures": {
+      "policy": "embedding_novelty @ 0.12",
+      "per_clip": [
+        {
+          "clip": "lighting_drift",
+          "purpose": "FALSE-TRIGGER PROBE: large lighting change, zero semantic change",
+          "n_frames": 720,
+          "n_calls": 16,
+          "calls_per_min": 40.0,
+          "n_events": 0,
+          "events_missed": [],
+          "false_triggers": [
+            {
+              "frame": 120,
+              "t": 4.0,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.14215,
+              "motion": 0.00756,
+              "scene_change": 0.03425
+            },
+            {
+              "frame": 131,
+              "t": 4.367,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.17272,
+              "motion": 0.00623,
+              "scene_change": 0.01948
+            },
+            {
+              "frame": 140,
+              "t": 4.667,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.12025,
+              "motion": 0.01007,
+              "scene_change": 0.02312
+            },
+            {
+              "frame": 150,
+              "t": 5.0,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.12693,
+              "motion": 0.00605,
+              "scene_change": 0.01028
+            },
+            {
+              "frame": 160,
+              "t": 5.333,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.15205,
+              "motion": 0.00648,
+              "scene_change": 0.01459
+            },
+            {
+              "frame": 181,
+              "t": 6.033,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.13656,
+              "motion": 0.00711,
+              "scene_change": 0.02675
+            },
+            {
+              "frame": 192,
+              "t": 6.4,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.14247,
+              "motion": 0.01834,
+              "scene_change": 0.04965
+            },
+            {
+              "frame": 202,
+              "t": 6.733,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.19508,
+              "motion": 0.00731,
+              "scene_change": 0.01136
+            },
+            {
+              "frame": 212,
+              "t": 7.067,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.1391,
+              "motion": 0.01161,
+              "scene_change": 0.02566
+            },
+            {
+              "frame": 225,
+              "t": 7.5,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.12061,
+              "motion": 0.00362,
+              "scene_change": 0.0141
+            },
+            {
+              "frame": 264,
+              "t": 8.8,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.1303,
+              "motion": 0.00765,
+              "scene_change": 0.03691
+            },
+            {
+              "frame": 288,
+              "t": 9.6,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.12459,
+              "motion": 0.00447,
+              "scene_change": 0.01259
+            },
+            {
+              "frame": 426,
+              "t": 14.2,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.14465,
+              "motion": 0.00434,
+              "scene_change": 0.02767
+            },
+            {
+              "frame": 435,
+              "t": 14.5,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.17654,
+              "motion": 0.00197,
+              "scene_change": 0.01153
+            },
+            {
+              "frame": 444,
+              "t": 14.8,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.1214,
+              "motion": 0.00176,
+              "scene_change": 0.01629
+            }
+          ],
+          "detection_delays_ms": [],
+          "oracle_gap_attribution": {
+            "warmup": 15,
+            "detection_lag": 0,
+            "missed_event": 0,
+            "valid": 705,
+            "scored_frames": 705,
+            "validity": 1.0
+          }
+        },
+        {
+          "clip": "mixed",
+          "purpose": "lighting drift WITH real events \u2014 the discriminating case",
+          "n_frames": 720,
+          "n_calls": 20,
+          "calls_per_min": 50.0,
+          "n_events": 2,
+          "events_missed": [],
+          "false_triggers": [
+            {
+              "frame": 120,
+              "t": 4.0,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.14377,
+              "motion": 0.00742,
+              "scene_change": 0.03254
+            },
+            {
+              "frame": 131,
+              "t": 4.367,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.16158,
+              "motion": 0.00628,
+              "scene_change": 0.0179
+            },
+            {
+              "frame": 140,
+              "t": 4.667,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.12298,
+              "motion": 0.01006,
+              "scene_change": 0.02289
+            },
+            {
+              "frame": 150,
+              "t": 5.0,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.13099,
+              "motion": 0.00626,
+              "scene_change": 0.0122
+            },
+            {
+              "frame": 160,
+              "t": 5.333,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.16019,
+              "motion": 0.0066,
+              "scene_change": 0.01578
+            },
+            {
+              "frame": 183,
+              "t": 6.1,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.1335,
+              "motion": 0.00502,
+              "scene_change": 0.02935
+            },
+            {
+              "frame": 192,
+              "t": 6.4,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.13908,
+              "motion": 0.01852,
+              "scene_change": 0.05173
+            },
+            {
+              "frame": 202,
+              "t": 6.733,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.19024,
+              "motion": 0.00729,
+              "scene_change": 0.0119
+            },
+            {
+              "frame": 212,
+              "t": 7.067,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.1246,
+              "motion": 0.01163,
+              "scene_change": 0.02252
+            },
+            {
+              "frame": 249,
+              "t": 8.3,
+              "state": 1,
+              "justified": false,
+              "novelty": 0.21534,
+              "motion": 0.0014,
+              "scene_change": 0.00372
+            },
+            {
+              "frame": 259,
+              "t": 8.633,
+              "state": 1,
+              "justified": false,
+              "novelty": 0.20995,
+              "motion": 0.00777,
+              "scene_change": 0.02652
+            },
+            {
+              "frame": 268,
+              "t": 8.933,
+              "state": 1,
+              "justified": false,
+              "novelty": 0.15639,
+              "motion": 0.00443,
+              "scene_change": 0.00687
+            },
+            {
+              "frame": 278,
+              "t": 9.267,
+              "state": 1,
+              "justified": false,
+              "novelty": 0.13507,
+              "motion": 0.003,
+              "scene_change": 0.0083
+            },
+            {
+              "frame": 288,
+              "t": 9.6,
+              "state": 1,
+              "justified": false,
+              "novelty": 0.14378,
+              "motion": 0.00433,
+              "scene_change": 0.01037
+            },
+            {
+              "frame": 434,
+              "t": 14.467,
+              "state": 1,
+              "justified": false,
+              "novelty": 0.12224,
+              "motion": 0.00226,
+              "scene_change": 0.01074
+            },
+            {
+              "frame": 489,
+              "t": 16.3,
+              "state": 2,
+              "justified": false,
+              "novelty": 0.15186,
+              "motion": 0.00152,
+              "scene_change": 0.00604
+            },
+            {
+              "frame": 498,
+              "t": 16.6,
+              "state": 2,
+              "justified": false,
+              "novelty": 0.1271,
+              "motion": 0.00181,
+              "scene_change": 0.00871
+            }
+          ],
+          "detection_delays_ms": [
+            0.0,
+            0.0
+          ],
+          "oracle_gap_attribution": {
+            "warmup": 15,
+            "detection_lag": 0,
+            "missed_event": 0,
+            "valid": 705,
+            "scored_frames": 705,
+            "validity": 1.0
+          }
+        },
+        {
+          "clip": "object_events",
+          "purpose": "semantic events with a static camera and steady light",
+          "n_frames": 720,
+          "n_calls": 13,
+          "calls_per_min": 32.5,
+          "n_events": 3,
+          "events_missed": [
+            {
+              "frame": 540,
+              "t": 18.0,
+              "to_state": 3,
+              "kind": "object_vanish: the object is removed",
+              "novelty_at_event": 0.10348,
+              "peak_novelty_after": 0.10348
+            }
+          ],
+          "false_triggers": [
+            {
+              "frame": 120,
+              "t": 4.0,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.13631,
+              "motion": 0.00753,
+              "scene_change": 0.02712
+            },
+            {
+              "frame": 131,
+              "t": 4.367,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.16295,
+              "motion": 0.00653,
+              "scene_change": 0.01786
+            },
+            {
+              "frame": 140,
+              "t": 4.667,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.12558,
+              "motion": 0.01033,
+              "scene_change": 0.02587
+            },
+            {
+              "frame": 154,
+              "t": 5.133,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.12622,
+              "motion": 0.00578,
+              "scene_change": 0.02704
+            },
+            {
+              "frame": 168,
+              "t": 5.6,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.12198,
+              "motion": 0.00639,
+              "scene_change": 0.02238
+            },
+            {
+              "frame": 190,
+              "t": 6.333,
+              "state": 1,
+              "justified": false,
+              "novelty": 0.14625,
+              "motion": 0.00515,
+              "scene_change": 0.0095
+            },
+            {
+              "frame": 199,
+              "t": 6.633,
+              "state": 1,
+              "justified": false,
+              "novelty": 0.20529,
+              "motion": 0.01214,
+              "scene_change": 0.03117
+            },
+            {
+              "frame": 209,
+              "t": 6.967,
+              "state": 1,
+              "justified": false,
+              "novelty": 0.15143,
+              "motion": 0.01395,
+              "scene_change": 0.02577
+            },
+            {
+              "frame": 222,
+              "t": 7.4,
+              "state": 1,
+              "justified": false,
+              "novelty": 0.12039,
+              "motion": 0.00377,
+              "scene_change": 0.02416
+            },
+            {
+              "frame": 440,
+              "t": 14.667,
+              "state": 2,
+              "justified": false,
+              "novelty": 0.17886,
+              "motion": 0.00139,
+              "scene_change": 0.00379
+            }
+          ],
+          "detection_delays_ms": [
+            0.0,
+            2333.3
+          ],
+          "oracle_gap_attribution": {
+            "warmup": 15,
+            "detection_lag": 0,
+            "missed_event": 250,
+            "valid": 455,
+            "scored_frames": 705,
+            "validity": 0.64539
+          }
+        },
+        {
+          "clip": "rapid_motion",
+          "purpose": "FALSE-TRIGGER PROBE: large apparent motion, zero semantic change",
+          "n_frames": 720,
+          "n_calls": 14,
+          "calls_per_min": 35.0,
+          "n_events": 0,
+          "events_missed": [],
+          "false_triggers": [
+            {
+              "frame": 127,
+              "t": 4.233,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.12278,
+              "motion": 0.02204,
+              "scene_change": 0.02697
+            },
+            {
+              "frame": 137,
+              "t": 4.567,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.13901,
+              "motion": 0.0325,
+              "scene_change": 0.03554
+            },
+            {
+              "frame": 147,
+              "t": 4.9,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.12317,
+              "motion": 0.01758,
+              "scene_change": 0.01742
+            },
+            {
+              "frame": 157,
+              "t": 5.233,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.14768,
+              "motion": 0.01518,
+              "scene_change": 0.01774
+            },
+            {
+              "frame": 179,
+              "t": 5.967,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.13698,
+              "motion": 0.03806,
+              "scene_change": 0.04451
+            },
+            {
+              "frame": 190,
+              "t": 6.333,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.15453,
+              "motion": 0.01879,
+              "scene_change": 0.03661
+            },
+            {
+              "frame": 199,
+              "t": 6.633,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.17123,
+              "motion": 0.02609,
+              "scene_change": 0.04272
+            },
+            {
+              "frame": 209,
+              "t": 6.967,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.13402,
+              "motion": 0.03318,
+              "scene_change": 0.03053
+            },
+            {
+              "frame": 264,
+              "t": 8.8,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.14434,
+              "motion": 0.02256,
+              "scene_change": 0.04939
+            },
+            {
+              "frame": 426,
+              "t": 14.2,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.16619,
+              "motion": 0.02572,
+              "scene_change": 0.05612
+            },
+            {
+              "frame": 439,
+              "t": 14.633,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.14041,
+              "motion": 0.0253,
+              "scene_change": 0.06242
+            },
+            {
+              "frame": 451,
+              "t": 15.033,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.13515,
+              "motion": 0.01853,
+              "scene_change": 0.02757
+            },
+            {
+              "frame": 477,
+              "t": 15.9,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.12857,
+              "motion": 0.01482,
+              "scene_change": 0.05158
+            }
+          ],
+          "detection_delays_ms": [],
+          "oracle_gap_attribution": {
+            "warmup": 15,
+            "detection_lag": 0,
+            "missed_event": 0,
+            "valid": 705,
+            "scored_frames": 705,
+            "validity": 1.0
+          }
+        },
+        {
+          "clip": "scene_cuts",
+          "purpose": "hard scene cuts \u2014 an upper bound on how detectable an event can be",
+          "n_frames": 720,
+          "n_calls": 27,
+          "calls_per_min": 67.5,
+          "n_events": 2,
+          "events_missed": [],
+          "false_triggers": [
+            {
+              "frame": 120,
+              "t": 4.0,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.13631,
+              "motion": 0.00753,
+              "scene_change": 0.02712
+            },
+            {
+              "frame": 131,
+              "t": 4.367,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.16295,
+              "motion": 0.00653,
+              "scene_change": 0.01786
+            },
+            {
+              "frame": 140,
+              "t": 4.667,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.12558,
+              "motion": 0.01033,
+              "scene_change": 0.02587
+            },
+            {
+              "frame": 154,
+              "t": 5.133,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.12622,
+              "motion": 0.00578,
+              "scene_change": 0.02704
+            },
+            {
+              "frame": 168,
+              "t": 5.6,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.12198,
+              "motion": 0.00639,
+              "scene_change": 0.02238
+            },
+            {
+              "frame": 183,
+              "t": 6.1,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.1303,
+              "motion": 0.00542,
+              "scene_change": 0.02206
+            },
+            {
+              "frame": 192,
+              "t": 6.4,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.1366,
+              "motion": 0.01992,
+              "scene_change": 0.04966
+            },
+            {
+              "frame": 202,
+              "t": 6.733,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.19005,
+              "motion": 0.00796,
+              "scene_change": 0.008
+            },
+            {
+              "frame": 213,
+              "t": 7.1,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.13585,
+              "motion": 0.01154,
+              "scene_change": 0.02268
+            },
+            {
+              "frame": 249,
+              "t": 8.3,
+              "state": 1,
+              "justified": false,
+              "novelty": 0.26859,
+              "motion": 0.00148,
+              "scene_change": 0.00331
+            },
+            {
+              "frame": 259,
+              "t": 8.633,
+              "state": 1,
+              "justified": false,
+              "novelty": 0.27758,
+              "motion": 0.01014,
+              "scene_change": 0.01189
+            },
+            {
+              "frame": 268,
+              "t": 8.933,
+              "state": 1,
+              "justified": false,
+              "novelty": 0.23923,
+              "motion": 0.00518,
+              "scene_change": 0.01127
+            },
+            {
+              "frame": 278,
+              "t": 9.267,
+              "state": 1,
+              "justified": false,
+              "novelty": 0.20343,
+              "motion": 0.00343,
+              "scene_change": 0.01916
+            },
+            {
+              "frame": 288,
+              "t": 9.6,
+              "state": 1,
+              "justified": false,
+              "novelty": 0.16489,
+              "motion": 0.00556,
+              "scene_change": 0.00875
+            },
+            {
+              "frame": 297,
+              "t": 9.9,
+              "state": 1,
+              "justified": false,
+              "novelty": 0.15685,
+              "motion": 0.00333,
+              "scene_change": 0.01422
+            },
+            {
+              "frame": 307,
+              "t": 10.233,
+              "state": 1,
+              "justified": false,
+              "novelty": 0.14695,
+              "motion": 0.00242,
+              "scene_change": 0.0037
+            },
+            {
+              "frame": 316,
+              "t": 10.533,
+              "state": 1,
+              "justified": false,
+              "novelty": 0.13414,
+              "motion": 0.0047,
+              "scene_change": 0.00462
+            },
+            {
+              "frame": 341,
+              "t": 11.367,
+              "state": 1,
+              "justified": false,
+              "novelty": 0.12015,
+              "motion": 0.00259,
+              "scene_change": 0.00353
+            },
+            {
+              "frame": 430,
+              "t": 14.333,
+              "state": 1,
+              "justified": false,
+              "novelty": 0.12898,
+              "motion": 0.00375,
+              "scene_change": 0.02479
+            },
+            {
+              "frame": 489,
+              "t": 16.3,
+              "state": 2,
+              "justified": false,
+              "novelty": 0.23111,
+              "motion": 0.00113,
+              "scene_change": 0.00388
+            },
+            {
+              "frame": 498,
+              "t": 16.6,
+              "state": 2,
+              "justified": false,
+              "novelty": 0.17934,
+              "motion": 0.00211,
+              "scene_change": 0.00552
+            },
+            {
+              "frame": 508,
+              "t": 16.933,
+              "state": 2,
+              "justified": false,
+              "novelty": 0.16648,
+              "motion": 0.00134,
+              "scene_change": 0.0057
+            },
+            {
+              "frame": 517,
+              "t": 17.233,
+              "state": 2,
+              "justified": false,
+              "novelty": 0.15318,
+              "motion": 0.00277,
+              "scene_change": 0.00522
+            },
+            {
+              "frame": 526,
+              "t": 17.533,
+              "state": 2,
+              "justified": false,
+              "novelty": 0.14309,
+              "motion": 0.00166,
+              "scene_change": 0.00727
+            }
+          ],
+          "detection_delays_ms": [
+            0.0,
+            0.0
+          ],
+          "oracle_gap_attribution": {
+            "warmup": 15,
+            "detection_lag": 0,
+            "missed_event": 0,
+            "valid": 705,
+            "scored_frames": 705,
+            "validity": 1.0
+          }
+        },
+        {
+          "clip": "static",
+          "purpose": "control: nothing happens",
+          "n_frames": 720,
+          "n_calls": 12,
+          "calls_per_min": 30.0,
+          "n_events": 0,
+          "events_missed": [],
+          "false_triggers": [
+            {
+              "frame": 120,
+              "t": 4.0,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.13631,
+              "motion": 0.00753,
+              "scene_change": 0.02712
+            },
+            {
+              "frame": 131,
+              "t": 4.367,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.16295,
+              "motion": 0.00653,
+              "scene_change": 0.01786
+            },
+            {
+              "frame": 140,
+              "t": 4.667,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.12558,
+              "motion": 0.01033,
+              "scene_change": 0.02587
+            },
+            {
+              "frame": 154,
+              "t": 5.133,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.12622,
+              "motion": 0.00578,
+              "scene_change": 0.02704
+            },
+            {
+              "frame": 168,
+              "t": 5.6,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.12198,
+              "motion": 0.00639,
+              "scene_change": 0.02238
+            },
+            {
+              "frame": 183,
+              "t": 6.1,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.1303,
+              "motion": 0.00542,
+              "scene_change": 0.02206
+            },
+            {
+              "frame": 192,
+              "t": 6.4,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.1366,
+              "motion": 0.01992,
+              "scene_change": 0.04966
+            },
+            {
+              "frame": 202,
+              "t": 6.733,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.19005,
+              "motion": 0.00796,
+              "scene_change": 0.008
+            },
+            {
+              "frame": 213,
+              "t": 7.1,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.13585,
+              "motion": 0.01154,
+              "scene_change": 0.02268
+            },
+            {
+              "frame": 435,
+              "t": 14.5,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.12391,
+              "motion": 0.0021,
+              "scene_change": 0.00814
+            },
+            {
+              "frame": 446,
+              "t": 14.867,
+              "state": 0,
+              "justified": false,
+              "novelty": 0.12467,
+              "motion": 0.00127,
+              "scene_change": 0.00274
+            }
+          ],
+          "detection_delays_ms": [],
+          "oracle_gap_attribution": {
+            "warmup": 15,
+            "detection_lag": 0,
+            "missed_event": 0,
+            "valid": 705,
+            "scored_frames": 705,
+            "validity": 1.0
+          }
+        }
+      ],
+      "totals": {
+        "warmup": 90,
+        "detection_lag": 0,
+        "missed_event": 250,
+        "valid": 3980
+      },
+      "oracle_gap_decomposition": {
+        "invalid_frames": 250,
+        "from_missed_events": 250,
+        "from_detection_lag": 0,
+        "pct_from_missed_events": 100.0,
+        "pct_from_detection_lag": 0.0,
+        "note": "Every frame whose held answer describes the wrong scene state is attributed to exactly one cause. 'missed_event' means the transition into that state was never queried at all; 'detection_lag' means it was queried, but later. The two call for different fixes: a lower threshold for the first, a shorter minimum gap for the second."
+      }
+    }
+  },
+  "events": {
+    "counts": {
+      "frames": 0,
+      "drops": 0,
+      "triggers": 0,
+      "vlm_calls": 0,
+      "answers": 0,
+      "accuracy_records": 0,
+      "truncated": false
+    },
+    "kept": true,
+    "drops": [],
+    "triggers": [],
+    "answers": [],
+    "vlm_calls": []
+  }
+}

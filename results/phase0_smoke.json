@@ -1,0 +1,768 @@
+{
+  "schema_version": 1,
+  "run": {
+    "name": "phase0_smoke",
+    "status": "completed",
+    "failure": null,
+    "duration_requested_s": 5.0,
+    "duration_actual_s": 5.0103,
+    "started_utc": "2026-08-03T17:53:20Z",
+    "wall_anchor": {
+      "monotonic": 31221.1178969,
+      "utc": "2026-08-03T17:53:20Z",
+      "unix": 1785779600.993852
+    },
+    "notes": [
+      "frame source: {\"source\": \"webcam\", \"device_index\": 0, \"backend\": \"CAP_DSHOW\", \"requested\": \"640x480\", \"fourcc\": \"MJPG\", \"width\": 640, \"height\": 480, \"driver_reported_fps\": -1.0, \"exposure_readback\": -5.0, \"auto_exposure_readback\": -1.0, \"warmup_frame_brightness\": 40.95, \"too_dark\": false}"
+    ]
+  },
+  "environment": {
+    "python": "3.12.10",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "seed": 1337,
+    "peripheral_version": "0.1.0",
+    "git_commit": "97a6afc",
+    "gpu_name": "NVIDIA GeForce RTX 5070 Ti Laptop GPU",
+    "gpu_vram_gb": 11.94,
+    "torch": "2.11.0+cu128",
+    "cuda": "12.8",
+    "gpu_capability": "12.0"
+  },
+  "config": {
+    "capture": {
+      "source": "webcam",
+      "device_index": 0,
+      "backend": "CAP_DSHOW",
+      "width": 640,
+      "height": 480,
+      "fourcc": "MJPG",
+      "target_fps": 30.0,
+      "warmup_frames": 5,
+      "auto_exposure": 0.25,
+      "exposure": -5.0
+    },
+    "telemetry": {
+      "power_sample_hz": 10.0,
+      "keep_events": true,
+      "max_events": 500000
+    },
+    "scheduler": {
+      "policy": "none"
+    },
+    "seed": 1337,
+    "run": {
+      "duration_s": 5.0,
+      "headless": true,
+      "metrics_out": "results\\phase0_smoke.json"
+    },
+    "paths": {
+      "results_dir": "results",
+      "data_dir": "data",
+      "models_dir": "models"
+    }
+  },
+  "definitions": {
+    "t0": "Frame timestamps are taken with time.perf_counter() at the instant OpenCV returns the frame \u2014 NOT true photon arrival. Sensor exposure and driver/USB transport add an unmeasured constant offset, so photon-to-answer latency reported here is a LOWER BOUND.",
+    "photon_to_first_token_ms": "t(first generated token of the answer) - t0(frame that triggered the VLM call). Includes preprocessing, vision encoding, prefill and any IPC \u2014 never model-only time.",
+    "photon_to_answer_ms": "t(final token of the answer) - t0(frame that triggered the VLM call). Same inclusions.",
+    "answer_staleness_ms": "t(answer emitted) - t0(frame whose evidence backs that answer). For a cache hit this is the age of the cached scene evidence, not the age of the cache entry.",
+    "false_trigger_rate": "Fraction of VLM invocations fired on frames externally labelled as carrying no semantic change. Requires ground-truth labels; null when the run has none.",
+    "accuracy_vs_oracle": "Agreement with the per-frame oracle (VLM invoked on every frame) on the same query timeline. Null unless an oracle run was supplied.",
+    "percentiles": "numpy.percentile with linear interpolation over the full population of the run (no warmup discarded unless the run config says so).",
+    "energy_j": "Trapezoidal integration of NVML power samples over the measured window. 'marginal' subtracts the idle baseline measured before the workload started.",
+    "null_vs_zero": "null means NOT MEASURED. 0 means measured and the value was zero. They are never interchangeable."
+  },
+  "metrics": {
+    "frames_captured": 152,
+    "frames_dropped": 0,
+    "drop_rate": 0.0,
+    "achieved_fps": 30.337,
+    "capture_interval_ms": {
+      "n": 151,
+      "mean": 33.179,
+      "p50": 32.031,
+      "p95": 47.844,
+      "p99": 49.048,
+      "min": 11.758,
+      "max": 50.567,
+      "std": 4.941
+    },
+    "stages_ms": {
+      "capture_read": {
+        "n": 152,
+        "mean": 32.935,
+        "p50": 31.993,
+        "p95": 47.773,
+        "p99": 49.024,
+        "min": 0.228,
+        "max": 50.539,
+        "std": 5.598
+      }
+    },
+    "queue_depth": {
+      "capture_out": {
+        "max": 0,
+        "mean": 0.0,
+        "n_samples": 152,
+        "series": [
+          [
+            31224.897992,
+            0
+          ],
+          [
+            31224.90975,
+            0
+          ],
+          [
+            31224.942163,
+            0
+          ],
+          [
+            31224.990602,
+            0
+          ],
+          [
+            31225.021544,
+            0
+          ],
+          [
+            31225.054245,
+            0
+          ],
+          [
+            31225.089584,
+            0
+          ],
+          [
+            31225.119022,
+            0
+          ],
+          [
+            31225.150257,
+            0
+          ],
+          [
+            31225.182871,
+            0
+          ],
+          [
+            31225.213985,
+            0
+          ],
+          [
+            31225.246294,
+            0
+          ],
+          [
+            31225.277981,
+            0
+          ],
+          [
+            31225.311423,
+            0
+          ],
+          [
+            31225.342394,
+            0
+          ],
+          [
+            31225.373281,
+            0
+          ],
+          [
+            31225.423848,
+            0
+          ],
+          [
+            31225.454277,
+            0
+          ],
+          [
+            31225.485647,
+            0
+          ],
+          [
+            31225.517695,
+            0
+          ],
+          [
+            31225.550384,
+            0
+          ],
+          [
+            31225.581159,
+            0
+          ],
+          [
+            31225.624368,
+            0
+          ],
+          [
+            31225.653818,
+            0
+          ],
+          [
+            31225.683864,
+            0
+          ],
+          [
+            31225.716795,
+            0
+          ],
+          [
+            31225.749157,
+            0
+          ],
+          [
+            31225.780586,
+            0
+          ],
+          [
+            31225.812935,
+            0
+          ],
+          [
+            31225.861265,
+            0
+          ],
+          [
+            31225.891395,
+            0
+          ],
+          [
+            31225.922937,
+            0
+          ],
+          [
+            31225.956985,
+            0
+          ],
+          [
+            31225.988703,
+            0
+          ],
+          [
+            31226.019332,
+            0
+          ],
+          [
+            31226.051327,
+            0
+          ],
+          [
+            31226.083479,
+            0
+          ],
+          [
+            31226.114687,
+            0
+          ],
+          [
+            31226.147763,
+            0
+          ],
+          [
+            31226.18137,
+            0
+          ],
+          [
+            31226.216245,
+            0
+          ],
+          [
+            31226.243394,
+            0
+          ],
+          [
+            31226.292477,
+            0
+          ],
+          [
+            31226.325107,
+            0
+          ],
+          [
+            31226.355839,
+            0
+          ],
+          [
+            31226.387745,
+            0
+          ],
+          [
+            31226.419966,
+            0
+          ],
+          [
+            31226.451705,
+            0
+          ],
+          [
+            31226.484408,
+            0
+          ],
+          [
+            31226.515499,
+            0
+          ],
+          [
+            31226.547439,
+            0
+          ],
+          [
+            31226.580077,
+            0
+          ],
+          [
+            31226.612032,
+            0
+          ],
+          [
+            31226.643567,
+            0
+          ],
+          [
+            31226.675398,
+            0
+          ],
+          [
+            31226.723802,
+            0
+          ],
+          [
+            31226.754396,
+            0
+          ],
+          [
+            31226.788217,
+            0
+          ],
+          [
+            31226.819802,
+            0
+          ],
+          [
+            31226.851827,
+            0
+          ],
+          [
+            31226.883353,
+            0
+          ],
+          [
+            31226.916579,
+            0
+          ],
+          [
+            31226.947446,
+            0
+          ],
+          [
+            31226.979769,
+            0
+          ],
+          [
+            31227.011342,
+            0
+          ],
+          [
+            31227.044272,
+            0
+          ],
+          [
+            31227.076127,
+            0
+          ],
+          [
+            31227.125139,
+            0
+          ],
+          [
+            31227.15516,
+            0
+          ],
+          [
+            31227.186735,
+            0
+          ],
+          [
+            31227.219712,
+            0
+          ],
+          [
+            31227.251275,
+            0
+          ],
+          [
+            31227.284691,
+            0
+          ],
+          [
+            31227.315126,
+            0
+          ],
+          [
+            31227.347723,
+            0
+          ],
+          [
+            31227.37969,
+            0
+          ],
+          [
+            31227.41249,
+            0
+          ],
+          [
+            31227.44391,
+            0
+          ],
+          [
+            31227.477131,
+            0
+          ],
+          [
+            31227.509183,
+            0
+          ],
+          [
+            31227.556413,
+            0
+          ],
+          [
+            31227.588444,
+            0
+          ],
+          [
+            31227.619288,
+            0
+          ],
+          [
+            31227.652514,
+            0
+          ],
+          [
+            31227.683722,
+            0
+          ],
+          [
+            31227.715703,
+            0
+          ],
+          [
+            31227.748838,
+            0
+          ],
+          [
+            31227.780546,
+            0
+          ],
+          [
+            31227.812947,
+            0
+          ],
+          [
+            31227.844214,
+            0
+          ],
+          [
+            31227.875747,
+            0
+          ],
+          [
+            31227.908952,
+            0
+          ],
+          [
+            31227.939112,
+            0
+          ],
+          [
+            31227.987931,
+            0
+          ],
+          [
+            31228.019977,
+            0
+          ],
+          [
+            31228.052132,
+            0
+          ],
+          [
+            31228.084066,
+            0
+          ],
+          [
+            31228.115405,
+            0
+          ],
+          [
+            31228.148079,
+            0
+          ],
+          [
+            31228.179442,
+            0
+          ],
+          [
+            31228.212938,
+            0
+          ],
+          [
+            31228.246034,
+            0
+          ],
+          [
+            31228.275908,
+            0
+          ],
+          [
+            31228.306881,
+            0
+          ],
+          [
+            31228.339832,
+            0
+          ],
+          [
+            31228.372372,
+            0
+          ],
+          [
+            31228.420773,
+            0
+          ],
+          [
+            31228.452845,
+            0
+          ],
+          [
+            31228.483836,
+            0
+          ],
+          [
+            31228.516816,
+            0
+          ],
+          [
+            31228.548284,
+            0
+          ],
+          [
+            31228.581368,
+            0
+          ],
+          [
+            31228.611448,
+            0
+          ],
+          [
+            31228.644301,
+            0
+          ],
+          [
+            31228.67572,
+            0
+          ],
+          [
+            31228.708267,
+            0
+          ],
+          [
+            31228.740358,
+            0
+          ],
+          [
+            31228.772141,
+            0
+          ],
+          [
+            31228.804774,
+            0
+          ],
+          [
+            31228.851849,
+            0
+          ],
+          [
+            31228.885049,
+            0
+          ],
+          [
+            31228.916225,
+            0
+          ],
+          [
+            31228.946419,
+            0
+          ],
+          [
+            31228.978706,
+            0
+          ],
+          [
+            31229.012722,
+            0
+          ],
+          [
+            31229.043608,
+            0
+          ],
+          [
+            31229.076716,
+            0
+          ],
+          [
+            31229.108288,
+            0
+          ],
+          [
+            31229.141148,
+            0
+          ],
+          [
+            31229.172292,
+            0
+          ],
+          [
+            31229.20568,
+            0
+          ],
+          [
+            31229.23719,
+            0
+          ],
+          [
+            31229.28342,
+            0
+          ],
+          [
+            31229.316201,
+            0
+          ],
+          [
+            31229.347711,
+            0
+          ],
+          [
+            31229.378906,
+            0
+          ],
+          [
+            31229.411479,
+            0
+          ],
+          [
+            31229.443195,
+            0
+          ],
+          [
+            31229.474677,
+            0
+          ],
+          [
+            31229.50854,
+            0
+          ],
+          [
+            31229.539388,
+            0
+          ],
+          [
+            31229.570336,
+            0
+          ],
+          [
+            31229.604405,
+            0
+          ],
+          [
+            31229.635751,
+            0
+          ],
+          [
+            31229.668414,
+            0
+          ],
+          [
+            31229.715772,
+            0
+          ],
+          [
+            31229.748638,
+            0
+          ],
+          [
+            31229.780233,
+            0
+          ],
+          [
+            31229.813459,
+            0
+          ],
+          [
+            31229.844021,
+            0
+          ],
+          [
+            31229.875798,
+            0
+          ],
+          [
+            31229.908038,
+            0
+          ]
+        ]
+      }
+    },
+    "photon_to_first_token_ms": null,
+    "photon_to_answer_ms": null,
+    "vlm_calls": 0,
+    "vlm_calls_per_min": 0.0,
+    "answer_staleness_ms": null,
+    "accuracy_vs_oracle": null,
+    "false_trigger_rate": null,
+    "trigger_count": null,
+    "power": {
+      "available": true,
+      "error": null,
+      "driver": "592.01",
+      "power_limit_w": 92.018,
+      "baseline_power_w": 12.258,
+      "n_samples": 49,
+      "sample_hz": 10.0,
+      "mean_w": 11.653,
+      "peak_w": 13.5,
+      "energy_j": 60.802,
+      "energy_marginal_j": 0.472,
+      "energy_per_query_j": null,
+      "energy_marginal_per_query_j": null,
+      "mean_util_pct": 40.6,
+      "peak_temp_c": 51
+    },
+    "vram": {
+      "available": true,
+      "peak_used_gb": 0.442,
+      "mean_used_gb": 0.419,
+      "note": "NVML board-wide usage, includes other processes \u2014 not our allocation alone"
+    }
+  },
+  "events": {
+    "counts": {
+      "frames": 152,
+      "drops": 0,
+      "triggers": 0,
+      "vlm_calls": 0,
+      "answers": 0,
+      "accuracy_records": 0,
+      "truncated": false
+    },
+    "kept": true,
+    "drops": [],
+    "triggers": [],
+    "answers": [],
+    "vlm_calls": []
+  }
+}

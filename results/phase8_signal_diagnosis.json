@@ -1,0 +1,966 @@
+{
+  "schema_version": 1,
+  "run": {
+    "name": "phase8_signal_diagnosis",
+    "status": "completed",
+    "failure": null,
+    "duration_requested_s": 900.0,
+    "duration_actual_s": 7.1662,
+    "t_start_monotonic": 14234.196947,
+    "started_utc": "2026-08-22T12:32:51Z",
+    "wall_anchor": {
+      "monotonic": 14232.2543326,
+      "utc": "2026-08-22T12:32:51Z",
+      "unix": 1787401971.4779265
+    },
+    "notes": [
+      "run ended early: step() returned False"
+    ]
+  },
+  "environment": {
+    "python": "3.12.10",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "machine": "AMD64",
+    "seed": 1337,
+    "peripheral_version": "0.1.0",
+    "git_commit": "6fe090f",
+    "gpu_name": "NVIDIA GeForce RTX 5070 Ti Laptop GPU",
+    "gpu_vram_gb": 11.94,
+    "torch": "2.11.0+cu128",
+    "cuda": "12.8",
+    "gpu_capability": "12.0"
+  },
+  "config": {
+    "capture": {
+      "source": "webcam",
+      "device_index": 0,
+      "backend": "CAP_DSHOW",
+      "width": 640,
+      "height": 480,
+      "fourcc": "MJPG",
+      "target_fps": 30.0,
+      "warmup_frames": 5,
+      "auto_exposure": 0.25,
+      "exposure": -5.0
+    },
+    "telemetry": {
+      "power_sample_hz": 10.0,
+      "keep_events": true,
+      "max_events": 500000
+    },
+    "scheduler": {
+      "policy": "none"
+    },
+    "pipeline": {
+      "policy": "drop_oldest",
+      "capture_q_size": 4,
+      "vlm_q_size": 2,
+      "answer_q_size": 8,
+      "queue_sample_hz": 20.0,
+      "prompt": "Describe what you see in one short sentence.",
+      "max_tokens": 32
+    },
+    "vlm": {
+      "name": "Qwen3-VL-4B-Instruct-Q8_0",
+      "bench_label": "Qwen3-VL-4B Q8_0",
+      "binary": "vendor/llama.cpp/llama-server.exe",
+      "model": "models/Qwen3-VL-4B/Qwen3VL-4B-Instruct-Q8_0.gguf",
+      "mmproj": "models/Qwen3-VL-4B/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf",
+      "host": "127.0.0.1",
+      "port": 8080,
+      "n_gpu_layers": 99,
+      "ctx_size": 4096,
+      "jpeg_quality": 85,
+      "autostart": true,
+      "startup_timeout_s": 300.0,
+      "extra_args": [
+        "--cache-reuse",
+        "256"
+      ]
+    },
+    "fasttier": {
+      "encoder": "onnx",
+      "model": "mobilenetv3_small_100",
+      "onnx_path": "models/onnx/mobilenetv3_small_100_224.onnx",
+      "input_size": 224,
+      "dtype": "fp16",
+      "device": "cuda",
+      "clip_norm": false,
+      "downsample_size": 32,
+      "providers": null,
+      "motion_size": 64,
+      "half_life_s": 2.0,
+      "keep_embedding": false
+    },
+    "encoder_bench": {
+      "clip": "data/clips/desk_60s.mp4",
+      "n_frames": 24,
+      "frame_stride": 60,
+      "latency_reps": 200,
+      "warmup": 20,
+      "candidates": [
+        {
+          "label": "downsample32 (control, no network)",
+          "kind": "downsample",
+          "size": 32
+        },
+        {
+          "label": "mobilenetv3_small@224 torch fp16",
+          "kind": "torch",
+          "model": "mobilenetv3_small_100",
+          "input_size": 224,
+          "dtype": "fp16"
+        },
+        {
+          "label": "mobilenetv3_small@224 onnx",
+          "kind": "onnx",
+          "model": "mobilenetv3_small_100",
+          "input_size": 224
+        },
+        {
+          "label": "dinov2_vits14@224 torch fp16",
+          "kind": "torch",
+          "model": "vit_small_patch14_dinov2.lvd142m",
+          "input_size": 224,
+          "dtype": "fp16"
+        },
+        {
+          "label": "dinov2_vits14@224 onnx",
+          "kind": "onnx",
+          "model": "vit_small_patch14_dinov2.lvd142m",
+          "input_size": 224
+        },
+        {
+          "label": "clip_vitb32@224 torch fp16",
+          "kind": "torch",
+          "model": "vit_base_patch32_clip_224.openai",
+          "input_size": 224,
+          "dtype": "fp16",
+          "clip_norm": true
+        },
+        {
+          "label": "clip_vitb32@224 onnx",
+          "kind": "onnx",
+          "model": "vit_base_patch32_clip_224.openai",
+          "input_size": 224,
+          "clip_norm": true
+        }
+      ]
+    },
+    "vlm_bench": {
+      "max_foreign_vram_gb": 1.5,
+      "clip": "data/clips/desk_60s.mp4",
+      "n_frames": 20,
+      "frame_stride": 90,
+      "warmup": 2,
+      "max_tokens": 48,
+      "prompt": "Describe what you see in one short sentence.",
+      "configs": [
+        {
+          "label": "SmolVLM2-500M f16",
+          "family": "SmolVLM2-500M",
+          "quant": "f16",
+          "params": "0.5B",
+          "model": "models/SmolVLM2-500M/SmolVLM2-500M-Video-Instruct-f16.gguf",
+          "mmproj": "models/SmolVLM2-500M/mmproj-SmolVLM2-500M-Video-Instruct-f16.gguf"
+        },
+        {
+          "label": "SmolVLM2-500M Q8_0",
+          "family": "SmolVLM2-500M",
+          "quant": "Q8_0",
+          "params": "0.5B",
+          "model": "models/SmolVLM2-500M/SmolVLM2-500M-Video-Instruct-Q8_0.gguf",
+          "mmproj": "models/SmolVLM2-500M/mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "SmolVLM2-2.2B Q8_0",
+          "family": "SmolVLM2-2.2B",
+          "quant": "Q8_0",
+          "params": "2.2B",
+          "model": "models/SmolVLM2-2.2B/SmolVLM2-2.2B-Instruct-Q8_0.gguf",
+          "mmproj": "models/SmolVLM2-2.2B/mmproj-SmolVLM2-2.2B-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "SmolVLM2-2.2B Q4_K_M",
+          "family": "SmolVLM2-2.2B",
+          "quant": "Q4_K_M",
+          "params": "2.2B",
+          "model": "models/SmolVLM2-2.2B/SmolVLM2-2.2B-Instruct-Q4_K_M.gguf",
+          "mmproj": "models/SmolVLM2-2.2B/mmproj-SmolVLM2-2.2B-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "Qwen3-VL-2B Q8_0",
+          "family": "Qwen3-VL-2B",
+          "quant": "Q8_0",
+          "params": "2B",
+          "model": "models/Qwen3-VL-2B/Qwen3VL-2B-Instruct-Q8_0.gguf",
+          "mmproj": "models/Qwen3-VL-2B/mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "Qwen3-VL-2B Q4_K_M",
+          "family": "Qwen3-VL-2B",
+          "quant": "Q4_K_M",
+          "params": "2B",
+          "model": "models/Qwen3-VL-2B/Qwen3VL-2B-Instruct-Q4_K_M.gguf",
+          "mmproj": "models/Qwen3-VL-2B/mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "Qwen3-VL-4B Q8_0",
+          "family": "Qwen3-VL-4B",
+          "quant": "Q8_0",
+          "params": "4B",
+          "model": "models/Qwen3-VL-4B/Qwen3VL-4B-Instruct-Q8_0.gguf",
+          "mmproj": "models/Qwen3-VL-4B/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf"
+        },
+        {
+          "label": "Qwen3-VL-4B Q4_K_M",
+          "family": "Qwen3-VL-4B",
+          "quant": "Q4_K_M",
+          "params": "4B",
+          "model": "models/Qwen3-VL-4B/Qwen3VL-4B-Instruct-Q4_K_M.gguf",
+          "mmproj": "models/Qwen3-VL-4B/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf"
+        }
+      ]
+    },
+    "kv_reuse": {
+      "model": "models/Qwen3-VL-4B/Qwen3VL-4B-Instruct-Q8_0.gguf",
+      "mmproj": "models/Qwen3-VL-4B/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf",
+      "clip": "data/clips/desk_60s.mp4",
+      "n_frames": 40,
+      "frame_stride": 45,
+      "reps": 1,
+      "warmup": 3,
+      "max_tokens": 48,
+      "prompt": "Describe what you see in one short sentence.",
+      "arms": [
+        {
+          "label": "A image-first, no reuse",
+          "image_first": true,
+          "stream": true,
+          "server_args": []
+        },
+        {
+          "label": "B text-first, slot cache",
+          "image_first": false,
+          "stream": true,
+          "server_args": []
+        },
+        {
+          "label": "C text-first, --cache-reuse 256",
+          "image_first": false,
+          "stream": true,
+          "server_args": [
+            "--cache-reuse",
+            "256"
+          ]
+        },
+        {
+          "label": "D text-first, non-streaming",
+          "image_first": false,
+          "stream": false,
+          "server_args": [
+            "--cache-reuse",
+            "256"
+          ]
+        }
+      ]
+    },
+    "hf_reference": {
+      "model_id": "Qwen/Qwen3-VL-4B-Instruct",
+      "quant_type": "nf4",
+      "double_quant": true,
+      "clip": "data/clips/desk_60s.mp4",
+      "n_frames": 20,
+      "frame_stride": 90,
+      "max_tokens": 48,
+      "prompt": "Describe what you see in one short sentence.",
+      "compare_gguf": true
+    },
+    "phase4": {
+      "base_footage": "data/clips/desk_60s.mp4",
+      "clip_dir": "data/eval_clips",
+      "trace_dir": "data/traces",
+      "clip_duration_s": 24.0,
+      "clip_fps": 30.0,
+      "clips": [
+        {
+          "name": "static",
+          "recipe": "static"
+        },
+        {
+          "name": "object_events",
+          "recipe": "object_events"
+        },
+        {
+          "name": "lighting_drift",
+          "recipe": "lighting_drift"
+        },
+        {
+          "name": "rapid_motion",
+          "recipe": "rapid_motion"
+        },
+        {
+          "name": "mixed",
+          "recipe": "mixed"
+        },
+        {
+          "name": "scene_cuts",
+          "recipe": "scene_cuts"
+        }
+      ],
+      "held_out_clips": [
+        "lighting_drift",
+        "mixed"
+      ],
+      "prompt": "Describe what you see in one short sentence.",
+      "max_tokens": 32,
+      "rebuild_traces": false,
+      "min_gap_s": 0.3,
+      "staleness_half_life_s": 3.0,
+      "warmup_frames": 15
+    },
+    "phase5": {
+      "policy_threshold": 0.12,
+      "cache_thresholds": [
+        0.5,
+        0.6,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.9,
+        0.95,
+        0.98,
+        0.999
+      ],
+      "max_staleness_s": 30.0,
+      "max_entries": 64,
+      "rebuild": false
+    },
+    "phase6": {
+      "clip": "data/eval_clips/mixed.mp4",
+      "replay_speed": 1.0,
+      "late_tolerance_ms": 50.0,
+      "query_every_s": 2.0,
+      "query_text": "Describe what you see in one short sentence.",
+      "max_tokens": 32,
+      "policy_kind": "embedding_novelty",
+      "policy_value": 0.12,
+      "use_fast_tier": true,
+      "ablations": [
+        {
+          "name": "full_system",
+          "policy_kind": "embedding_novelty",
+          "policy_value": 0.12,
+          "use_fast_tier": true,
+          "note": "the system as chosen in Phases 2-4"
+        },
+        {
+          "name": "fixed_interval_matched",
+          "policy_kind": "fixed_interval",
+          "policy_value": 0,
+          "match_budget": true,
+          "use_fast_tier": true,
+          "note": "scheduler replaced by a timer at an exactly matched call budget."
+        },
+        {
+          "name": "no_fast_tier",
+          "policy_kind": "fixed_interval",
+          "policy_value": 0,
+          "match_budget": true,
+          "use_fast_tier": false,
+          "note": "Removing the fast tier removes the scheduler's only input, so it necessarily degenerates to a timer. Identical to fixed_interval_matched by construction \u2014 which is itself the finding: without the fast tier there is no scheduler left to have.\n"
+        },
+        {
+          "name": "motion_only",
+          "policy_kind": "motion_threshold",
+          "policy_value": 0.015,
+          "use_fast_tier": true,
+          "note": "embedding replaced by pixel differencing \u2014 the motion-detector control"
+        },
+        {
+          "name": "oracle",
+          "policy_kind": "fixed_interval",
+          "policy_value": 0.0,
+          "use_fast_tier": true,
+          "note": "per-frame oracle \u2014 the upper bound, and unaffordable in real time"
+        }
+      ]
+    },
+    "phase8": {
+      "event_response_frames": 30,
+      "quiet_margin_frames": 30,
+      "validity_bar": 0.99
+    },
+    "streamingbench": {
+      "csv": "data/streamingbench/Real_Time_Visual_Understanding.csv",
+      "video_root": "data/streamingbench/videos",
+      "wall_clock_budget_s": 1500.0,
+      "max_tokens": 8
+    },
+    "demo": {
+      "policy_kind": "embedding_novelty",
+      "policy_value": 0.12,
+      "prompt": "Describe what you see in one short sentence.",
+      "max_tokens": 32,
+      "write_frames": null
+    },
+    "seed": 1337,
+    "run": {
+      "duration_s": 900.0,
+      "headless": true,
+      "metrics_out": "results\\phase8_signal_diagnosis.json"
+    },
+    "record": {
+      "path": "data/clips/clip.mp4",
+      "fourcc": "mp4v"
+    },
+    "paths": {
+      "results_dir": "results",
+      "data_dir": "data",
+      "models_dir": "models"
+    }
+  },
+  "definitions": {
+    "t0": "Frame timestamps are taken with time.perf_counter() at the instant OpenCV returns the frame \u2014 NOT true photon arrival. Sensor exposure and driver/USB transport add an unmeasured constant offset, so photon-to-answer latency reported here is a LOWER BOUND.",
+    "photon_to_first_token_ms": "t(first generated token of the answer) - t0(frame that triggered the VLM call). Includes preprocessing, vision encoding, prefill and any IPC \u2014 never model-only time.",
+    "photon_to_answer_ms": "t(final token of the answer) - t0(frame that triggered the VLM call). Same inclusions.",
+    "answer_staleness_ms": "t(answer emitted) - t0(frame whose evidence backs that answer). For a cache hit this is the age of the cached scene evidence, not the age of the cache entry.",
+    "false_trigger_rate": "Fraction of VLM invocations fired on frames externally labelled as carrying no semantic change. Requires ground-truth labels; null when the run has none.",
+    "accuracy_vs_oracle": "Agreement with the per-frame oracle (VLM invoked on every frame) on the same query timeline. Null unless an oracle run was supplied.",
+    "percentiles": "numpy.percentile with linear interpolation over the full population of the run (no warmup discarded unless the run config says so).",
+    "energy_j": "Trapezoidal integration of NVML power samples over the measured window. 'marginal' subtracts the idle baseline measured before the workload started.",
+    "null_vs_zero": "null means NOT MEASURED. 0 means measured and the value was zero. They are never interchangeable."
+  },
+  "metrics": {
+    "frames_captured": 0,
+    "frames_dropped": 0,
+    "drop_rate": null,
+    "achieved_fps": 0.0,
+    "capture_interval_ms": null,
+    "stages_ms": null,
+    "queue_depth": null,
+    "photon_to_first_token_ms": null,
+    "photon_to_answer_ms": null,
+    "vlm_calls": 0,
+    "vlm_calls_per_min": 0.0,
+    "answer_staleness_ms": null,
+    "accuracy_vs_oracle": null,
+    "false_trigger_rate": null,
+    "trigger_count": null,
+    "power": {
+      "available": true,
+      "error": null,
+      "driver": "592.01",
+      "power_limit_w": 95.0,
+      "baseline_power_w": 9.652,
+      "n_samples": 51,
+      "sample_hz": 10.0,
+      "mean_w": 4.338,
+      "peak_w": 5.243,
+      "energy_j": 30.971,
+      "energy_marginal_j": 0.0,
+      "energy_per_query_j": null,
+      "energy_marginal_per_query_j": null,
+      "mean_util_pct": 0.0,
+      "peak_temp_c": 52,
+      "series": [
+        [
+          14234.197229,
+          4.779,
+          542212096,
+          0
+        ],
+        [
+          14234.322934,
+          4.779,
+          542212096,
+          0
+        ],
+        [
+          14234.526521,
+          4.779,
+          542212096,
+          0
+        ],
+        [
+          14234.654711,
+          4.591,
+          542212096,
+          0
+        ],
+        [
+          14234.780114,
+          4.591,
+          542212096,
+          0
+        ],
+        [
+          14234.907359,
+          4.591,
+          542212096,
+          0
+        ],
+        [
+          14235.034641,
+          4.591,
+          542212096,
+          0
+        ],
+        [
+          14235.208265,
+          4.591,
+          542212096,
+          0
+        ],
+        [
+          14235.341614,
+          4.602,
+          542212096,
+          0
+        ],
+        [
+          14235.474519,
+          4.602,
+          542212096,
+          0
+        ],
+        [
+          14235.64579,
+          4.602,
+          542212096,
+          0
+        ],
+        [
+          14235.790174,
+          4.619,
+          542212096,
+          0
+        ],
+        [
+          14235.914599,
+          4.619,
+          542212096,
+          0
+        ],
+        [
+          14236.146742,
+          4.619,
+          540835840,
+          0
+        ],
+        [
+          14236.287399,
+          5.243,
+          540835840,
+          0
+        ],
+        [
+          14236.412905,
+          5.243,
+          540835840,
+          0
+        ],
+        [
+          14236.568211,
+          5.243,
+          540835840,
+          0
+        ],
+        [
+          14236.723753,
+          4.949,
+          540835840,
+          0
+        ],
+        [
+          14236.849546,
+          4.949,
+          540835840,
+          0
+        ],
+        [
+          14236.975388,
+          4.949,
+          540835840,
+          0
+        ],
+        [
+          14237.16248,
+          4.949,
+          540835840,
+          0
+        ],
+        [
+          14237.304371,
+          4.954,
+          540835840,
+          0
+        ],
+        [
+          14237.477597,
+          4.954,
+          540835840,
+          0
+        ],
+        [
+          14237.618415,
+          4.954,
+          540835840,
+          0
+        ],
+        [
+          14237.743677,
+          4.954,
+          540835840,
+          0
+        ],
+        [
+          14237.901935,
+          4.954,
+          540835840,
+          0
+        ],
+        [
+          14238.049912,
+          4.954,
+          540835840,
+          0
+        ],
+        [
+          14238.167914,
+          3.807,
+          540835840,
+          0
+        ],
+        [
+          14238.324304,
+          3.807,
+          540835840,
+          0
+        ],
+        [
+          14238.450344,
+          3.807,
+          540835840,
+          0
+        ],
+        [
+          14238.580471,
+          3.807,
+          540835840,
+          0
+        ],
+        [
+          14238.717239,
+          3.807,
+          540835840,
+          0
+        ],
+        [
+          14238.856188,
+          3.807,
+          540835840,
+          0
+        ],
+        [
+          14238.980508,
+          3.807,
+          540835840,
+          0
+        ],
+        [
+          14239.123524,
+          3.807,
+          540835840,
+          0
+        ],
+        [
+          14239.247615,
+          3.754,
+          540835840,
+          0
+        ],
+        [
+          14239.388133,
+          3.754,
+          540835840,
+          0
+        ],
+        [
+          14239.500454,
+          3.754,
+          540835840,
+          0
+        ],
+        [
+          14239.638148,
+          3.754,
+          540835840,
+          0
+        ],
+        [
+          14239.790051,
+          3.754,
+          540835840,
+          0
+        ],
+        [
+          14239.935855,
+          3.754,
+          540835840,
+          0
+        ],
+        [
+          14240.077133,
+          3.754,
+          540835840,
+          0
+        ],
+        [
+          14240.203549,
+          3.815,
+          540835840,
+          0
+        ],
+        [
+          14240.327302,
+          3.815,
+          540835840,
+          0
+        ],
+        [
+          14240.469032,
+          3.815,
+          540835840,
+          0
+        ],
+        [
+          14240.593336,
+          3.815,
+          540835840,
+          0
+        ],
+        [
+          14240.736917,
+          3.815,
+          540835840,
+          0
+        ],
+        [
+          14240.861199,
+          3.815,
+          540835840,
+          0
+        ],
+        [
+          14241.013904,
+          3.815,
+          540835840,
+          0
+        ],
+        [
+          14241.161182,
+          3.815,
+          540835840,
+          0
+        ],
+        [
+          14241.301858,
+          3.788,
+          540835840,
+          0
+        ]
+      ],
+      "series_columns": [
+        "t_monotonic",
+        "power_w",
+        "mem_used_b",
+        "util_gpu_pct"
+      ]
+    },
+    "vram": {
+      "available": true,
+      "peak_used_gb": 0.505,
+      "mean_used_gb": 0.504,
+      "note": "NVML board-wide usage, includes other processes \u2014 not our allocation alone"
+    }
+  },
+  "extra": {
+    "phase8_signal_diagnosis": {
+      "separability": [
+        {
+          "clip": "mixed",
+          "n_events": 2,
+          "n_event_frames": 60,
+          "n_quiet_frames": 525,
+          "auc_novelty": 0.9481,
+          "novelty_event_median": 0.16421,
+          "novelty_quiet_p95": 0.14415,
+          "auc_motion": 0.3647,
+          "motion_event_median": 0.00188,
+          "motion_quiet_p95": 0.00787,
+          "auc_scene_change": 0.5201,
+          "scene_change_event_median": 0.00801,
+          "scene_change_quiet_p95": 0.02669,
+          "event_clears_quiet_p95": true
+        },
+        {
+          "clip": "object_events",
+          "n_events": 3,
+          "n_event_frames": 90,
+          "n_quiet_frames": 435,
+          "auc_novelty": 0.6959,
+          "novelty_event_median": 0.07323,
+          "novelty_quiet_p95": 0.1238,
+          "auc_motion": 0.6866,
+          "motion_event_median": 0.00529,
+          "motion_quiet_p95": 0.00789,
+          "auc_scene_change": 0.6465,
+          "scene_change_event_median": 0.00939,
+          "scene_change_quiet_p95": 0.01902,
+          "event_clears_quiet_p95": false
+        },
+        {
+          "clip": "scene_cuts",
+          "n_events": 2,
+          "n_event_frames": 60,
+          "n_quiet_frames": 525,
+          "auc_novelty": 0.9958,
+          "novelty_event_median": 0.25092,
+          "novelty_quiet_p95": 0.14646,
+          "auc_motion": 0.361,
+          "motion_event_median": 0.00198,
+          "motion_quiet_p95": 0.00843,
+          "auc_scene_change": 0.4514,
+          "scene_change_event_median": 0.00659,
+          "scene_change_quiet_p95": 0.02313,
+          "event_clears_quiet_p95": true
+        }
+      ],
+      "mean_auc_novelty": 0.8799,
+      "headroom": {
+        "embedding_novelty": {
+          "validity_bar": 0.99,
+          "global_best": null,
+          "per_clip_best": {
+            "lighting_drift": {
+              "threshold": 0.2511,
+              "calls_per_min": 2.5,
+              "validity": 1.0,
+              "event_recall": null
+            },
+            "mixed": {
+              "threshold": 0.165,
+              "calls_per_min": 20.0,
+              "validity": 1.0,
+              "event_recall": 1.0
+            },
+            "object_events": null,
+            "rapid_motion": {
+              "threshold": 0.2511,
+              "calls_per_min": 2.5,
+              "validity": 1.0,
+              "event_recall": null
+            },
+            "scene_cuts": {
+              "threshold": 0.2716,
+              "calls_per_min": 10.0,
+              "validity": 1.0,
+              "event_recall": 1.0
+            },
+            "static": {
+              "threshold": 0.2511,
+              "calls_per_min": 2.5,
+              "validity": 1.0,
+              "event_recall": null
+            }
+          },
+          "clips_no_threshold_can_serve": [
+            "object_events"
+          ],
+          "n_achievable": 5,
+          "n_clips": 6,
+          "per_clip_mean_calls_per_min": 7.5,
+          "adaptation_headroom_x": null,
+          "optimal_threshold_spread": 1.65
+        },
+        "motion_threshold": {
+          "validity_bar": 0.99,
+          "global_best": {
+            "threshold": 0.01446,
+            "mean_calls_per_min": 36.667,
+            "min_validity": 1.0,
+            "mean_recall": 1.0
+          },
+          "per_clip_best": {
+            "lighting_drift": {
+              "threshold": 0.04619,
+              "calls_per_min": 2.5,
+              "validity": 1.0,
+              "event_recall": null
+            },
+            "mixed": {
+              "threshold": 0.01446,
+              "calls_per_min": 12.5,
+              "validity": 1.0,
+              "event_recall": 1.0
+            },
+            "object_events": {
+              "threshold": 0.01446,
+              "calls_per_min": 15.0,
+              "validity": 1.0,
+              "event_recall": 1.0
+            },
+            "rapid_motion": {
+              "threshold": 0.04873,
+              "calls_per_min": 2.5,
+              "validity": 1.0,
+              "event_recall": null
+            },
+            "scene_cuts": {
+              "threshold": 0.04619,
+              "calls_per_min": 7.5,
+              "validity": 1.0,
+              "event_recall": 1.0
+            },
+            "static": {
+              "threshold": 0.04619,
+              "calls_per_min": 2.5,
+              "validity": 1.0,
+              "event_recall": null
+            }
+          },
+          "clips_no_threshold_can_serve": [],
+          "n_achievable": 6,
+          "n_clips": 6,
+          "per_clip_mean_calls_per_min": 7.083,
+          "adaptation_headroom_x": 5.177,
+          "optimal_threshold_spread": 3.37
+        }
+      },
+      "verdict": "signal_problem",
+      "reason": "no novelty threshold anywhere in the swept range reaches validity 0.99 on ['object_events'] \u2014 the events on those clips do not clear the scene's own background novelty (mean AUC 0.880; the event median sits below the quiet p95 on 1 of 3 clips with events). Adaptive thresholding cannot fix a cut-point that does not exist; the fast-tier signal is what needs changing.",
+      "definitions": {
+        "auc": "ROC AUC of the signal separating frames just after a state change from frames far from any change, WITHIN one clip \u2014 so per-scene scale is not a confound. 0.5 means no information.",
+        "adaptation_headroom_x": "cost of the best single global threshold divided by the cost of the best per-clip threshold, both required to clear the same validity bar. The oracle upper bound on what per-scene adaptation could ever buy."
+      }
+    }
+  },
+  "events": {
+    "counts": {
+      "frames": 0,
+      "drops": 0,
+      "triggers": 0,
+      "vlm_calls": 0,
+      "answers": 0,
+      "accuracy_records": 0,
+      "truncated": false
+    },
+    "kept": true,
+    "drops": [],
+    "triggers": [],
+    "answers": [],
+    "vlm_calls": []
+  }
+}
