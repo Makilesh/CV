@@ -51,6 +51,7 @@ Everything else is scaffolding for those two plots.
 | 6 | Replay harness + benchmarks + ablations | complete `RESULTS.md`; **no-future-frames test passing** | **✅ 170 passed · Gate 3 caught a real bug · SB subset 0.714** |
 | 7 | Ship: GUI demo, CI, README, demo GIF | fresh clone reaches a working live demo | **✅ 192 passed · demo 30.0 FPS · README + both figures + GIF** |
 | 8 | **Rescue the scheduler thesis** — diagnose, better signal, adaptive threshold | content policy beats the timer at matched budget on all six clips | **❌ FAILED — timer still wins. Signal fixed (+0.20 AUC), claim not.** |
+| 9 | **Find the regime** — sparsity ladder, static vs live background, lighting drift | a content policy beats a matched timer at ≥0.99 validity and 100% recall | **✅ 214 passed · 17–67× fewer calls on a static background · sparsity was the wrong variable** |
 
 **Protocol:** phases run strictly in order. Each ends with its test, a reported number, and a full
 stop awaiting confirmation. Tag at each boundary (`git tag phase-0-scaffold`).
@@ -243,6 +244,10 @@ Rejected approaches belong here with their reasons.
 | D38 | Fast-tier novelty is scored on the **top-3 cells of a 7×7 feature map**, not a pooled vector | Global pooling averages a corner event against a person moving through the middle — exactly the irrelevant motion the scheduler must ignore. Patch novelty lifted `object_events` AUC 0.696 → 0.895 at *lower* latency (2.95 vs 3.32 ms), because it skips the classifier head. | Keeping the pooled embedding, whose failure mode is structural rather than tunable |
 | D39 | The adaptive policy thresholds on a **rolling quantile**, making it a rate controller | A quantile is scale-free, so it calibrates per scene automatically — and it makes budget-matching against a timer automatic, turning the comparison into the exact question at issue: at the same number of calls, does picking the most novel frames beat picking evenly spaced ones? | An absolute adaptive threshold, which would still need a global constant somewhere |
 | D40 | **Phase 8 is recorded as failed**, with a test that fails if a content policy ever does beat the timer | The exit criterion was not met: `fixed_interval` remains cheapest on all six clips with either signal. Recording a failure as a failure is the whole point of having stated it in advance; the test means a future success forces the write-up to be rewritten rather than the claim quietly appearing. | Reporting the held-out 3× win and omitting the all-clips loss |
+| D41 | **Phase 9 sweeps the experimental variable, not the policy** — background stability and event sparsity, with the policies held fixed | Phase 8 spent a whole phase improving the signal and the adaptive threshold and moved the answer not at all. When four policies all lose on one dataset and all win on another, the dataset is the variable. | A fifth policy, or tuning the adaptive controller further |
+| D42 | **Phase 8's published explanation is marked superseded rather than deleted** | It named event sparsity as the limiting variable and prescribed sparser clips. Phase 9 built them: oversampling stayed pinned at 75× and the timer kept winning. The wrong reasoning is on record next to the data that refutes it, because a reader who only sees the corrected version cannot tell how the error was caught. | Quietly editing §8 to say what §9 found |
+| D43 | **The ladder runs with no VLM at all**, and `accuracy_vs_oracle` serialises as `null` | Validity, recall and false-trigger rate come from scene-state labels that are exact by construction; only the secondary text-agreement metric needs model outputs. This turned an 11-clip sweep into 22 minutes. A `0.0` or a copied-forward accuracy would have been a fabricated number. | Running the oracle for completeness and reporting an accuracy nobody uses |
+| D44 | **The lighting-drift rows are reported even though they weaken the fast tier's headline** | On a frozen background plain pixel differencing is *optimal* — false-trigger rate 0.000 — and a 2.95 ms encoder cannot beat that. Publishing only the frozen ladder would sell the encoder on a case that does not need it. The drift rows are where it earns its latency (motion 8.9–16.6× worse, embedding unchanged), and that is a narrower but true claim. | Quoting the 50–67× static-background win and omitting that motion produced it |
 | D36 | The README carries **"what was not established" above the fold**, and a test asserts it stays in the first half | It is the section most likely to drift downward over time, and it contains the all-clips reversal and the 7-of-500 benchmark subset. A footnote would be an overclaim by omission. | Leading with the headline alone |
 
 ---
@@ -473,11 +478,19 @@ call counts of 1–12 make false-trigger rates coarse; synthetic events are easi
 
 ---
 
-## 13. Phase 5 results — the cache is cut, and the reason is the interesting part
+## 13. Phase 5 results — the cache is kept, after the timing fix reversed it
 
 `pytest tests/ -q` → **150 passed**. Full write-up in `RESULTS.md` §5.
 
-**Recommendation: CUT.** There is no cache threshold that avoids calls without costing accuracy.
+> **This section was stale and is corrected.** The CUT verdict below was measured *before* the
+> `t_presentation` fix, when 3–4× under-scaled novelty made the scheduler fire so rarely that no
+> redundancy was left for a cache to reclaim. The re-run (`results/phase5_cache.json`,
+> 2026-08-12) gives a held-out baseline of 45.0 calls/min at validity 1.000, and at threshold
+> **0.85 the cache removes 52.5% of calls with zero false hits and no validity loss**.
+> **Verdict: KEEP at 0.85–0.90.** `RESULTS.md` §5 has the current table; the superseded reasoning
+> is kept below because the mechanism it describes is still the right way to think about it.
+
+**Superseded recommendation: CUT.** There is no cache threshold that avoids calls without costing accuracy.
 Above 0.70 similarity the cache never fires at all; at 0.60 it fires and **every hit is wrong**,
 dropping answer validity from 1.000 to 0.660.
 
@@ -553,9 +566,67 @@ these clips is only **4–6× oversampled** relative to the event rate (one even
 density blind sampling is near-optimal and frame *selection* has almost nothing to select. Content
 awareness pays in long stasis, and 24-second clips contain almost none.
 
+> **Superseded by Phase 9 (§16.5).** Those clips were built and the diagnosis was wrong. Sparser
+> events do not raise the timer's oversampling — its winning interval scales with the event rate,
+> so oversampling stayed pinned at 75× across the whole ladder while the timer kept winning. The
+> variable is **background stability**, not sparsity. The reasoning below is left on record
+> because it was measured correctly and reasoned to the wrong cause.
+
 That is a hard design requirement for Phase 9, not an excuse: **clips must be minutes long with
 sparse events.** Until they exist this comparison cannot be settled, and no further policy
 engineering will settle it.
+
+---
+
+## 16.5 Phase 9 results — the thesis holds, and Phase 8's explanation was wrong
+
+`pytest tests/ -q` → **214 passed**. Full write-up in `RESULTS.md` §9. Data:
+`results/phase9_sparsity.json` (11 clips × 300 s, 1,303 s of wall clock, no VLM).
+
+**The exit criterion is met, in one regime.** On a static-background camera the best content policy
+holds ≥0.99 answer validity and **100% event recall at 17–67× fewer VLM calls** than a
+fixed-interval timer holding the same bar:
+
+| clip | timer | `adaptive` | `embedding` | `motion` | best speedup |
+|---|---:|---:|---:|---:|---:|
+| `frozen_sparse_2` | 30.0 | 7.4 | 1.6 | **0.6** | **50.0×** |
+| `frozen_sparse_4` | 60.0 | 7.0 | 3.4 | **1.0** | **60.0×** |
+| `frozen_sparse_8` | 120.0 | 5.4 | 5.6 | **1.8** | **66.7×** |
+
+**Sparsity was the wrong variable.** Phase 8 blamed a timer running at 4–6× oversampling and
+prescribed sparser events. Those clips were built — one event per 150 s at the extreme — and the
+timer still won every live-background row, because **its winning interval scales with the event
+rate**, pinning oversampling at 75× across the whole ladder. The variable that decides it is
+**background stability**. Every clip since Phase 4 was composited over desk footage with a person
+continuously in frame, which puts the novelty floor above the height of the events. That one
+choice, made for realism, suppressed the result for five phases.
+
+**The lighting-drift rows are where the encoder earns its 2.95 ms.** On a frozen background plain
+pixel differencing is *optimal* (false-trigger rate 0.000) and no learned signal can beat it. Add a
+slow gamma drift and it collapses while the embedding does not notice:
+
+| clip | `motion` | `embedding` |
+|---|---:|---:|
+| `frozen_sparse_4` → `frozen_drift_sparse_4` | 1.0 → **16.6** | 3.4 → **3.4** |
+| `frozen_sparse_8` → `frozen_drift_sparse_8` | 1.8 → **16.0** | 5.6 → **5.6** |
+
+Motion's false-trigger rate goes 0.000 → 0.951. The embedding's cost, operating point and
+false-trigger rate are byte-identical with and without the drift. This is Phase 2's
+`semantic/motion` ratio of 0.42 reproduced at clip scale. The honest trade: **motion is 3.4× cheaper
+when the light holds still; the embedding is 4.9× cheaper when it does not, and never falls apart.**
+
+**Two self-inflicted bugs, both producing clean-looking numbers.** (1) *Phase-lock* — evenly spaced
+events let a timer align with every one of them; `sparse_4` reported a timer cost of 1.0 calls/min
+against an honest 60.0. Event times are randomised now. (2) *Name collision* —
+`SparsityStudyRunner.setup()` stored a clip duration as `self.duration_s`, shadowing the run
+deadline; a 3,600 s run ended after 332 s and wrote `status: completed` with no note. The deadline
+now reads a private `_run_duration_s` fixed in `__init__`. Both have regression tests.
+
+**What this still does not show:** the static background is synthetic (frozen frame + Gaussian
+noise, no compression artifacts or micro-motion); events are composited; the zero-event rows prove
+nothing (validity is satisfied by any single call, and their 5× is a grid artifact of the timer
+sweep stopping at 60 s); a single global threshold still does not transfer between scenes; and no
+VLM ran, so these are scheduler costs at exact-label validity, not end-to-end accuracy.
 
 ---
 
